@@ -136,9 +136,22 @@ func TestGatewayOriginsHostSwitchCancelsAndDiscardsOldSave(t *testing.T) {
 func TestModelHealthRendersReasonAndProbeExpiry(t *testing.T) {
 	a, _, _ := fixture(t)
 	a.page, a.loaded = "models", true
-	a.models = []Model{{Name: "jev-1.13-free", Provider: "opencode", Status: "offline", Capabilities: []string{"text", "streaming"}, Health: ModelHealth{Reason: "OpenCode 免费档仅供官方客户端使用", LastProbeAt: "2026-10-22T17:00:00Z", ProbeExpiresAt: "2026-10-22T17:15:00Z"}}}
+	a.models = []Model{{Name: "jev-1.13-free", Provider: "opencode-systemone-free", Status: "offline", Capabilities: []string{"systemone"}, Health: ModelHealth{Reason: "上游免费额度耗尽", LastProbeAt: "2026-10-22T17:00:00Z", ProbeExpiresAt: "2026-10-22T17:15:00Z"}}}
 	tt := ui.NewTester(a.View, 1100, 800)
-	if !tt.HasText("离线") || !tt.HasText("OpenCode 免费档仅供官方客户端使用") || !tt.HasText("探活时间 2026-10-22T17:00:00Z · 有效至 2026-10-22T17:15:00Z") {
+	if !tt.HasText("离线") || !tt.HasText("上游免费额度耗尽") || !tt.HasText("探活时间 2026-10-22T17:00:00Z · 有效至 2026-10-22T17:15:00Z") {
 		t.Fatal("health evidence not rendered")
+	}
+}
+
+func TestSystemOneCategoryExcludesTextModels(t *testing.T) {
+	a, _, _ := fixture(t)
+	a.page, a.loaded, a.modelCategory = "models", true, "结构化判断"
+	a.models = []Model{{Name: "jev-1.13-free", Provider: "opencode-systemone-free", Capabilities: []string{"systemone"}}, {Name: "chat-model", Capabilities: []string{"text", "streaming"}}}
+	tt := ui.NewTester(a.View, 1100, 800)
+	if !tt.HasText("jev-1.13-free") || tt.HasText("chat-model") {
+		t.Fatal("native category mixed decision and chat models")
+	}
+	if modelInCategory(a.models[0], "文本") || !modelInCategory(a.models[0], "结构化判断") {
+		t.Fatal("System One should remain separate from text generation")
 	}
 }

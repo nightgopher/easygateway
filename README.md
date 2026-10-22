@@ -41,7 +41,7 @@ Debian、Ubuntu 及其衍生发行版可以直接安装 Release 附带的 .deb �
 
 ```bash
 # 从最新 Release 下载并安装服务端（自动注册 systemd 服务并生成随机 Master Key）
-curl -fsSL -o easygateway-server.deb https://github.com/hwj123hwj/litellm-gateway/releases/latest/download/easygateway-server_0.3.8-1_amd64.deb
+curl -fsSL -o easygateway-server.deb https://github.com/hwj123hwj/litellm-gateway/releases/latest/download/easygateway-server_0.3.9-1_amd64.deb
 sudo dpkg -i easygateway-server.deb || sudo apt-get install -f
 ```
 
@@ -68,7 +68,7 @@ sudo dpkg --purge easygateway-server   # 卸载并清除全部数据
 桌面管理端从 v0.3.7 起提供 Linux 包（amd64 / arm64），安装后出现在应用菜单，命令行入口为 `easygateway-desktop`。桌面端只管理网关，不自带网关进程；运行需要 GTK3 与 WebKitGTK 4.1（包依赖已声明）：
 
 ```bash
-curl -fsSL -o easygateway-desktop.deb https://github.com/hwj123hwj/litellm-gateway/releases/latest/download/easygateway_0.3.8_amd64.deb
+curl -fsSL -o easygateway-desktop.deb https://github.com/hwj123hwj/litellm-gateway/releases/latest/download/easygateway_0.3.9_amd64.deb
 sudo dpkg -i easygateway-desktop.deb || sudo apt-get install -f
 ```
 
@@ -170,6 +170,14 @@ MY_PROVIDER_API_KEY=sk-xxx
 
 - Base URL: `http://localhost:4001/v1`（本地）
 - Messages: `POST /v1/messages`
+
+### System One 结构化判断（Jev）
+
+`POST /v1/systemone` 接收 `model`、`state` 和 `questions`，原样返回结构化 `answers`、概率与 usage。问题可组合 `noul`（是／否概率）、`choice`（分类）和 `score`（评分）；Jev 不用于 Chat Completions、Messages 或 Responses。
+
+`jev-1.13-free` 可使用上游匿名免费额度；`jev-1.13` 需要在网关 `.env` 中设置工作区 `OPENCODE_API_KEY` 并重启。OpenCode 渠道设备码 OAuth 不能替代此 Key。模型目录以 `protocol: systemone`、`capabilities: [systemone]` 标记；缺少付费 Key 时仍保留目录并说明不可用原因。免费额度耗尽返回真实 `429`，不自动切换到付费模型。
+
+使用 [Jev Demo](https://hwj123hwj.github.io/jev-demo/) 或参阅 [请求示例](go-gateway/README.md#system-one结构化判断)。
 
 ## 支持的模型
 

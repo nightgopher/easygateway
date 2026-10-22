@@ -85,6 +85,7 @@ Claude Code、Codex CLI、Pi 和后续应用只配置网关地址与 Key，不�
 - 支持 OpenAI Chat Completions；
 - 支持 OpenAI Responses；
 - 支持 Anthropic Messages；
+- 支持 System One 原生结构化判断（state/questions → answers），与文本生成协议隔离；
 - 支持流式和非流式请求；
 - 生成 request ID，便于排查和关联日志；
 - 上层应用不需要知道 Provider 的真实地址和 Key。

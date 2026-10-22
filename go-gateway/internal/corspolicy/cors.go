@@ -65,7 +65,7 @@ func (p *Policy) Apply(config Config) error {
 		AllowOrigins:     allowed,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With", "X-Request-ID", "X-AI-Source", "X-Conversation-ID", "X-Session-ID"},
-		ExposeHeaders:    []string{"Content-Length", "Content-Type", "X-Request-ID", "X-Upstream-Request-ID"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type", "X-Request-ID", "X-Upstream-Request-ID", "Retry-After"},
 		AllowCredentials: false, MaxAge: 12 * time.Hour,
 	})
 	p.mu.Lock()

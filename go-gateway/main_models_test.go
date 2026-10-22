@@ -46,6 +46,7 @@ func TestAssistantChatModelIDsExcludeSinglePurpose(t *testing.T) {
 		{ID: "BAAI/bge-m3", Capabilities: []string{"embedding", "text"}},
 		{ID: "XingChenAGI/XingChenASR-V3.2", Capabilities: []string{"audio_transcription", "text"}},
 		{ID: "no-text", Capabilities: []string{"tool_calling", "streaming"}},
+		{ID: "jev-1.13-free", Protocol: "systemone", Capabilities: []string{"systemone"}},
 	}
 	got := assistantChatModelIDs(infos)
 	want := []string{"chat", "vision-chat"}

@@ -73,7 +73,7 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 	}
 	usedInstances := map[string]bool{}
 	channels := map[string]bool{"minimax": true, "cline": true, "lobster": true, "gemini": true, "codebuddy": true, "workbuddy": true, "trae": true, "loomy": true, "raccoon": true, "opencode": true}
-	capabilities := map[string]bool{"text": true, "vision": true, "video": true, "file": true, "audio": true, "tool_calling": true, "streaming": true, "reasoning": true, "embedding": true, "audio_transcription": true}
+	capabilities := map[string]bool{"text": true, "vision": true, "video": true, "file": true, "audio": true, "tool_calling": true, "streaming": true, "reasoning": true, "embedding": true, "audio_transcription": true, "systemone": true}
 	modalities := map[string]bool{"text": true, "image": true, "video": true, "file": true, "audio": true}
 	for i, p := range cfg.Providers {
 		path := fmt.Sprintf("providers[%d]", i)
@@ -82,7 +82,7 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 		}
 		names[p.Name] = true
 		switch p.Type {
-		case "openai", "anthropic", "chatgpt":
+		case "openai", "anthropic", "chatgpt", "systemone":
 			if !validProviderURL(p.URL) {
 				add("error", path+".url", "must be an absolute HTTP(S) URL without credentials, query or fragment")
 			}
@@ -106,10 +106,10 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 		if p.RequestTimeoutSeconds < 0 || p.FirstOutputTimeoutSeconds < 0 || p.ReasoningFirstOutputTimeoutSeconds < 0 {
 			add("error", path, "timeouts cannot be negative")
 		}
-		if p.AllowNoKey && p.Type != "openai" {
-			add("error", path+".allow_no_key", "only supported by openai providers")
+		if p.AllowNoKey && p.Type != "openai" && p.Type != "systemone" {
+			add("error", path+".allow_no_key", "only supported by openai and systemone providers")
 		}
-		if (p.Type == "openai" || p.Type == "anthropic") && opts.CheckEnvironment && providerAPIKeyFromEnv(p.APIKeyEnv) == "" {
+		if (p.Type == "openai" || p.Type == "anthropic" || p.Type == "systemone") && opts.CheckEnvironment && providerAPIKeyFromEnv(p.APIKeyEnv) == "" {
 			level := "error"
 			if p.AllowNoKey || opts.AllowMissingKeys {
 				level = "warning"
@@ -149,8 +149,11 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 					add("error", mp+".input_modalities", "unknown modality: "+v)
 				}
 			}
-			if m.Protocol != "" && m.Protocol != "openai" && m.Protocol != "anthropic" && m.Protocol != "responses" {
+			if m.Protocol != "" && m.Protocol != "openai" && m.Protocol != "anthropic" && m.Protocol != "responses" && m.Protocol != "systemone" {
 				add("error", mp+".protocol", "unknown protocol")
+			}
+			if p.Type == "systemone" && ((m.Protocol != "" && m.Protocol != "systemone") || len(m.Capabilities) != 1 || m.Capabilities[0] != CapabilitySystemOne) {
+				add("error", mp, "systemone providers require capabilities: [systemone] and protocol: systemone (or omitted)")
 			}
 			if p.Type == "chatgpt" {
 				continue

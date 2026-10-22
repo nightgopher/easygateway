@@ -101,7 +101,7 @@ func IsBusinessRequest(method, path string) bool {
 	switch path {
 	case "/v1/messages", "/messages",
 		"/v1/chat/completions", "/chat/completions",
-		"/v1/responses", "/responses":
+		"/v1/responses", "/responses", "/v1/systemone", "/systemone":
 		return true
 	default:
 		return false

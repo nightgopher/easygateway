@@ -42,6 +42,25 @@ make run
 
 网关仅提供 HTTP API，不携带或提供浏览器页面。使用 `GET /health` 检查状态，通过 [原生 Go 桌面端](../desktop/README.md) 管理连接、模型、路由、日志和助理。
 
+## System One：结构化判断
+
+Jev 使用独立的 JSON 协议：`POST /v1/systemone`（兼容别名 `/systemone`）。网关按模型路由、绑定上游模型名、记录轻量指标，并保留原生答案和扩展字段。它不把判断结果包装成聊天文本；聊天入口会返回 400 并提示正确端点。
+
+```bash
+curl http://127.0.0.1:4001/v1/systemone \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"jev-1.13-free","state":"支付连续失败，客户无法下单。","questions":{"urgent":{"type":"noul","instructions":"是否需要紧急处理？"}}}'
+```
+
+`questions` 可同时包含 `noul`、`choice`、`score`。`choice.criteria` 为选项对象，`score.criteria` 为从低到高的等级数组；结构化 state、instructions、criteria 和扩展字段保留给上游。请求最大 4 MiB，响应最大 8 MiB，支持取消；这是一次 JSON 请求，不支持 SSE 文本流。上游 401/403/429 和原生错误类型会保留，`Retry-After` 和上游请求 ID 通过响应头提供。
+
+配置使用 `type: systemone`、完整原生端点 URL、`capabilities: [systemone]`。OpenCode 端点为 `https://opencode.ai/inference/systemone/v1/systemone`；有工作区 Key 时在受保护 `.env` 设置 `OPENCODE_API_KEY`，重启加载。付费档缺 Key 时保留目录但不发请求；免费档 `allow_no_key: true` 允许匿名额度，额度失败不会触发付费回退。它与 OpenCode 渠道设备码登录相互独立。
+
+默认模型 doctor 仅报告配置状态，不调用 System One；管理员明确选择某个 Provider 探活时才发送原生最小判断请求。成功响应、协议测试成功和真实上游额度错误应分别记录，模型出现在目录中不代表推理已通过。
+
+依据：[OpenCode Jev](https://opencode.ai/v2/docs/console/models/#jev)、[TypeSafe 协议](https://docs.typesafe.ai/introduction/quickstart)。
+
 ## 账号渠道登录
 
 在原生桌面端的「账号渠道」中发起登录，由浏览器完成授权。账号令牌保存在网关主机的受保护凭据目录，桌面端不接收令牌明文。渠道是否需要额外客户端配置、是否支持匿名模型以及本机回调要求以 `GET /admin/channels` 返回值为准；缺少配置时按桌面端说明补齐并重启网关。
