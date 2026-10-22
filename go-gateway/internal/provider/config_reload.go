@@ -97,9 +97,9 @@ func (r *ConfigReloader) prepare(cfg *ProvidersConfig) (*preparedConfig, error) 
 	// Optional, unconfigured providers can stay disabled across reloads, as at
 	// startup. A new or previously active provider must not silently disappear
 	// because its credentials/client failed to initialize.
-	oldModels := map[string]ModelInfo{}
+	activeProviders := map[string]bool{}
 	for _, m := range r.router.ListModelInfos() {
-		oldModels[m.ID] = m
+		activeProviders[m.Provider] = true
 	}
 	configured := map[string]bool{}
 	for _, p := range cfg.Providers {
@@ -108,7 +108,7 @@ func (r *ConfigReloader) prepare(cfg *ProvidersConfig) (*preparedConfig, error) 
 			if _, ok := registered[m.ID]; ok {
 				continue
 			}
-			if r.status.Generation > 0 && (!r.configured[p.Name] || oldModels[m.ID].Provider == p.Name) {
+			if r.status.Generation > 0 && (!r.configured[p.Name] || activeProviders[p.Name]) {
 				return nil, fmt.Errorf("provider %s could not initialize model %s; previous configuration retained", p.Name, m.ID)
 			}
 		}
