@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weijian/go-llm-gateway/internal/corspolicy"
 	"gopkg.in/yaml.v3"
 )
 
@@ -59,6 +60,7 @@ type ModelConfig struct {
 
 // ProvidersConfig 提供商配置文件
 type ProvidersConfig struct {
+	CORS      corspolicy.Config   `yaml:"cors,omitempty"`
 	Providers []ProviderConfig    `yaml:"providers"`
 	Chains    map[string][]string `yaml:"chains"`
 }
@@ -109,7 +111,10 @@ func LoadProvidersConfig(path string) (*ProvidersConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
+	return parseProvidersConfig(data)
+}
 
+func parseProvidersConfig(data []byte) (*ProvidersConfig, error) {
 	var cfg ProvidersConfig
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -330,6 +335,9 @@ func RegisterProvidersFromConfig(router *Router, cfg *ProvidersConfig, logger in
 			capabilities := normalizeModelCapabilities(mc.Capabilities)
 			boundProvider := NewBoundModelProviderWrapper(baseProvider, mc.ID, capabilities)
 			router.RegisterProvider(providerName, boundProvider)
+			router.mu.Lock()
+			router.runtime[providerName].anonymousProbe = pc.AllowNoKey && providerAPIKeyFromEnv(pc.APIKeyEnv) == ""
+			router.mu.Unlock()
 			if pc.RateLimitScope == "channel" {
 				router.SetProviderRateLimitGroup(providerName, pc.Name)
 			}

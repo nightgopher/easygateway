@@ -19,9 +19,14 @@ func NewModelHandler(router *provider.Router, logger *log.Logger) *ModelHandler 
 }
 
 func (h *ModelHandler) Handle(c *gin.Context) {
-	infos := h.router.ListModelInfos()
-	models := make([]map[string]any, 0, len(infos))
-	for _, info := range infos {
+	catalog := h.router.ModelCatalog()
+	onlyAvailable := c.Query("available_only") == "true" || c.Query("available_only") == "1"
+	models := make([]map[string]any, 0, len(catalog))
+	for _, entry := range catalog {
+		info, health := entry.Info, entry.Health
+		if onlyAvailable && !health.Available {
+			continue
+		}
 		model := map[string]any{
 			"id":           info.ID,
 			"object":       "model",
@@ -29,8 +34,9 @@ func (h *ModelHandler) Handle(c *gin.Context) {
 			"display_name": info.ID,
 			// Keep the historical value for client compatibility; provider is
 			// exposed separately as additive metadata below.
-			"owned_by":     "custom",
-			"capabilities": info.Capabilities,
+			"owned_by":       "custom",
+			"capabilities":   info.Capabilities,
+			"gateway_status": health,
 		}
 		if info.Provider != "" {
 			model["provider"] = info.Provider

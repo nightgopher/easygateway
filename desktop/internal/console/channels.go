@@ -21,15 +21,16 @@ type ChannelAccount struct {
 	RefreshAvailable bool   `json:"refresh_available"`
 }
 type AccountChannel struct {
-	ID                string           `json:"channel"`
-	LoggedIn          bool             `json:"logged_in"`
-	Accounts          []ChannelAccount `json:"accounts"`
-	LoginAvailable    *bool            `json:"login_available"`
-	NeedsClientConfig bool             `json:"needs_client_config"`
-	LocalOnly         bool             `json:"local_login_only"`
-	SetupHint         string           `json:"setup_hint"`
-	Anonymous         bool             `json:"anonymous_available"`
-	Models            []string         `json:"models"`
+	ModelHealth       map[string]ModelHealth `json:"model_health"`
+	ID                string                 `json:"channel"`
+	LoggedIn          bool                   `json:"logged_in"`
+	Accounts          []ChannelAccount       `json:"accounts"`
+	LoginAvailable    *bool                  `json:"login_available"`
+	NeedsClientConfig bool                   `json:"needs_client_config"`
+	LocalOnly         bool                   `json:"local_login_only"`
+	SetupHint         string                 `json:"setup_hint"`
+	Anonymous         bool                   `json:"anonymous_available"`
+	Models            []string               `json:"models"`
 }
 type ChannelLogin struct {
 	ID        string `json:"login_id"`

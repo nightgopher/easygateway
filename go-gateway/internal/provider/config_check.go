@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/weijian/go-llm-gateway/internal/corspolicy"
 )
 
 // ValidationOptions separates offline syntax checks from credential readiness.
@@ -62,6 +64,9 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 		return r
 	}
 	r.Providers, r.Chains = len(cfg.Providers), len(cfg.Chains)
+	if _, err := corspolicy.NormalizeOrigins(cfg.CORS.AllowedOrigins); err != nil {
+		add("error", "cors.allowed_origins", err.Error())
+	}
 	names, public, instances := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, name := range opts.ExternalProviders {
 		instances[name] = true

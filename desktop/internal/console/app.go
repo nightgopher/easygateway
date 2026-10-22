@@ -70,6 +70,10 @@ type App struct {
 	memoryScope, memoryKey, memoryText                                    string
 	prompt                                                                Prompt
 	promptDraft                                                           string
+	gatewayConfig                                                         GatewayConfigStatus
+	gatewayConfigErr                                                      string
+	corsConfig                                                            CORSConfig
+	corsDraft                                                             string
 	promptErr                                                             string
 	configs                                                               map[string]ClientConfig
 	configSelection                                                       map[string]map[string]bool
@@ -375,6 +379,12 @@ func (a *App) reload() {
 			err := c.JSON(ctx, "GET", endpoint, nil, &d)
 			return func() { a.memories = d.Memories; a.loaded = true }, err
 		case "settings":
+			var gatewayConfig GatewayConfigStatus
+			gatewayErr := c.JSON(ctx, "GET", "/config/status", nil, &gatewayConfig)
+			var cors CORSConfig
+			if gatewayErr == nil {
+				gatewayErr = c.JSON(ctx, "GET", "/config/cors", nil, &cors)
+			}
 			// 各面板尽力而为：助理人设拉取失败（如助理未启用返回 503）
 			// 只影响人设卡片，不拖垮整个设置页；客户端同步与 cc-switch
 			// 迁移扫描同样独立容错。
@@ -393,6 +403,13 @@ func (a *App) reload() {
 				scan = CCSwitchScan{Error: "扫描失败：" + err.Error()}
 			}
 			return func() {
+				a.gatewayConfig = gatewayConfig
+				a.gatewayConfigErr = ""
+				if gatewayErr != nil {
+					a.gatewayConfigErr = "配置管理暂不可用，请检查网关版本或连接：" + gatewayErr.Error()
+				}
+				a.corsConfig = cors
+				a.corsDraft = strings.Join(cors.AllowedOrigins, "\n")
 				a.prompt = p
 				a.promptDraft = p.Custom
 				a.promptErr = ""
@@ -574,6 +591,10 @@ func (a *App) resetHost() {
 	a.modelCategory = modelCategoryAll
 	a.prompt = Prompt{}
 	a.promptDraft = ""
+	a.gatewayConfig = GatewayConfigStatus{}
+	a.gatewayConfigErr = ""
+	a.corsConfig = CORSConfig{}
+	a.corsDraft = ""
 	a.configs = map[string]ClientConfig{}
 	a.configSelection = map[string]map[string]bool{}
 	a.chatMarkdown = markdownDocument{}

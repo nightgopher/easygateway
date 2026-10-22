@@ -2,10 +2,11 @@ package main
 
 import (
 	"bytes"
-	"github.com/weijian/go-llm-gateway/internal/provider"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/weijian/go-llm-gateway/internal/provider"
 )
 
 func TestShippedConfigPassesOfflineValidation(t *testing.T) {

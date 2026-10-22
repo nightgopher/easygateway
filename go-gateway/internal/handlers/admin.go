@@ -101,10 +101,21 @@ func (h *AdminHandler) HandleModels(c *gin.Context) {
 
 	result := make([]gin.H, 0)
 	seen := make(map[string]bool)
-	for _, info := range h.router.ListModelInfos() {
+	for _, item := range h.router.ModelCatalog() {
+		info := item.Info
 		seen[info.ID] = true
 		stat := statsByModel[info.ID]
 		entry := modelPayload(info, stat, routeByModel[info.ID])
+		health := item.Health
+		entry["health"] = health
+		switch health.Status {
+		case "available":
+			entry["status"] = "online"
+		case "unavailable":
+			entry["status"] = "offline"
+		default:
+			entry["status"] = health.Status
+		}
 		result = append(result, entry)
 	}
 	// Preserve historical stats if a model was removed from the current config
@@ -114,7 +125,7 @@ func (h *AdminHandler) HandleModels(c *gin.Context) {
 			continue
 		}
 		result = append(result, gin.H{
-			"model": stat.Model, "provider": stat.Provider, "status": "online",
+			"model": stat.Model, "provider": stat.Provider, "status": "removed",
 			"requests": stat.Requests, "total_tokens": stat.TotalTokens,
 			"avg_latency": stat.AvgLatency, "successes": stat.Successes, "errors": stat.Errors,
 			"cache_read_input_tokens":     stat.CacheReadInputTokens,

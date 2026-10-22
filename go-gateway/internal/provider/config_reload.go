@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/weijian/go-llm-gateway/internal/corspolicy"
 )
 
 type ConfigReloadStatus struct {
@@ -24,6 +26,7 @@ type ConfigReloader struct {
 	extend     func(*Router) error
 	status     ConfigReloadStatus
 	configured map[string]bool
+	corsPolicy *corspolicy.Policy
 }
 
 func NewConfigReloader(router *Router, path string, external []string, extend func(*Router) error) *ConfigReloader {
@@ -47,24 +50,48 @@ func (r *ConfigReloader) Check() (ConfigReport, error) {
 	return report, report.Err()
 }
 
+func (r *ConfigReloader) SetCORSPolicy(policy *corspolicy.Policy) {
+	r.mu.Lock()
+	r.corsPolicy = policy
+	r.mu.Unlock()
+}
+
 func (r *ConfigReloader) Reload() (ConfigReloadStatus, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fail := func(err error) (ConfigReloadStatus, error) {
-		r.status.LastError = err.Error()
-		return r.status, err
-	}
 	cfg, err := LoadProvidersConfig(r.path)
 	if err != nil {
-		return fail(err)
+		return r.reloadFailure(err)
 	}
+	candidate, err := r.prepare(cfg)
+	if err != nil {
+		return r.reloadFailure(err)
+	}
+	r.apply(candidate)
+	return r.status, nil
+}
+
+type preparedConfig struct {
+	router     *Router
+	config     *ProvidersConfig
+	report     ConfigReport
+	configured map[string]bool
+}
+
+func (r *ConfigReloader) reloadFailure(err error) (ConfigReloadStatus, error) {
+	r.status.LastError = err.Error()
+	return r.status, err
+}
+
+func (r *ConfigReloader) prepare(cfg *ProvidersConfig) (*preparedConfig, error) {
 	report := ValidateProvidersConfig(cfg, ValidationOptions{CheckEnvironment: true, AllowMissingKeys: true, ExternalProviders: r.external})
 	if err := report.Err(); err != nil {
-		return fail(err)
+		return nil, err
 	}
 	r.router.mu.RLock()
 	candidate := NewRouterWithCircuitConfig(r.router.logger, r.router.circuitConfig)
 	candidate.policy = r.router.policy
+	candidate.healthTTL = r.router.healthTTL
 	r.router.mu.RUnlock()
 	registered := RegisterProvidersFromConfig(candidate, cfg, r.router.logger)
 	// Optional, unconfigured providers can stay disabled across reloads, as at
@@ -82,22 +109,29 @@ func (r *ConfigReloader) Reload() (ConfigReloadStatus, error) {
 				continue
 			}
 			if r.status.Generation > 0 && (!r.configured[p.Name] || oldModels[m.ID].Provider == p.Name) {
-				return fail(fmt.Errorf("provider %s could not initialize model %s; previous configuration retained", p.Name, m.ID))
+				return nil, fmt.Errorf("provider %s could not initialize model %s; previous configuration retained", p.Name, m.ID)
 			}
 		}
 	}
 	if r.extend != nil {
 		if err := r.extend(candidate); err != nil {
-			return fail(err)
+			return nil, err
 		}
 	}
-	r.router.replaceConfiguration(candidate)
-	r.configured = configured
+
+	return &preparedConfig{candidate, cfg, report, configured}, nil
+}
+
+func (r *ConfigReloader) apply(candidate *preparedConfig) {
+	r.router.replaceConfiguration(candidate.router)
+	if r.corsPolicy != nil {
+		_ = r.corsPolicy.Apply(candidate.config.CORS) // Already validated by prepare.
+	}
+	r.configured = candidate.configured
 	r.status.Generation++
 	r.status.LastAppliedAt = time.Now().UTC()
 	r.status.LastError = ""
-	r.status.Report = report
-	return r.status, nil
+	r.status.Report = candidate.report
 }
 
 // Requests already holding a provider keep that instance and its transport.
