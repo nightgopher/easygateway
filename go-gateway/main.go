@@ -115,19 +115,8 @@ func main() {
 	channelRegistry := channel.NewRegistry()
 	setupChannelProviders(router, channelRegistry, logger)
 
-	// 尝试从 providers.yaml 加载配置
-	configPath := "providers.yaml"
-	if _, err := os.Stat(configPath); err == nil {
-		logger.Printf("Loading providers from %s", configPath)
-		if _, err := provider.SetupProvidersFromConfig(router, configPath, logger); err != nil {
-			logger.Printf("Warning: failed to load providers.yaml: %v, using defaults", err)
-		}
-	} else {
-		logger.Printf("providers.yaml not found, using default providers")
-		setupDefaultProviders(router, cfg, logger)
-	}
-
-	// ChatGPT Codex（使用 ChatGPT Plus/Pro OAuth token；代理可选）
+	// Environment-backed integrations share their existing clients across reloads.
+	nativeProviders := provider.NewRouter(logger)
 	proxyURL := cfg.HTTPProxy
 	if proxyURL == "" {
 		proxyURL = os.Getenv("HTTPS_PROXY")
@@ -135,19 +124,25 @@ func main() {
 	if proxyURL == "" {
 		proxyURL = os.Getenv("https_proxy")
 	}
-	if !hasProvider(router.ListProviders(), "chatgpt") {
-		setupChatGPTProvider(router, proxyURL, cfg.ChatGPTAuthFile, logger)
-	}
-
-	// GitHub Copilot
+	setupChatGPTProvider(nativeProviders, proxyURL, cfg.ChatGPTAuthFile, logger)
 	if cfg.CopilotToken != "" {
-		setupCopilotProviders(router, cfg, logger)
+		setupCopilotProviders(nativeProviders, cfg, logger)
 	}
-
-	// DeepV Server（EasyCode/DeepVCode 聚合服务，读取本地 JWT 登录态）
 	if cfg.DeepVEnabled {
-		setupDeepVProviders(router, cfg, logger)
+		setupDeepVProviders(nativeProviders, cfg, logger)
 	}
+	configPath := "providers.yaml"
+	reloader := provider.NewConfigReloader(router, configPath, externalConfigProviders(), func(candidate *provider.Router) error {
+		candidate.IncludeMissingConfiguration(nativeProviders)
+		return nil
+	})
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		setupDefaultProviders(router, cfg, logger)
+		router.IncludeMissingConfiguration(nativeProviders)
+	} else if _, err := reloader.Reload(); err != nil {
+		logger.Fatalf("Failed to load providers.yaml: %v", err)
+	}
+	watchConfigReload(shutdownSignals, reloader, logger)
 
 	// 创建 Gin 引擎
 	gin.SetMode(gin.ReleaseMode)
@@ -194,6 +189,7 @@ func main() {
 	passthroughHandler := handlers.NewPassthroughHandler(router, logger)
 	healthHandler := handlers.NewHealthHandler(router, logger)
 	adminHandler := handlers.NewAdminHandler(router, collector, logger)
+	configAdminHandler := handlers.NewConfigAdminHandler(reloader)
 	piConfigHandler := handlers.NewPiConfigHandler(defaultGatewayHome(), defaultPiHome(), logger, router)
 	clientConfigHandler := handlers.NewClientConfigHandler(defaultGatewayHome(), defaultZCodeHome(), defaultDshHome(), router, logger)
 	ccswitchHandler := handlers.NewCCSwitchHandler(defaultCCSwitchHome(), cfg.Port, router, logger)
@@ -281,6 +277,9 @@ func main() {
 		admin.GET("/logs", adminHandler.HandleLogs)
 		admin.GET("/health", adminHandler.HandleHealth)
 		admin.GET("/config", adminHandler.HandleConfig)
+		admin.GET("/config/status", configAdminHandler.HandleStatus)
+		admin.POST("/config/check", configAdminHandler.HandleCheck)
+		admin.POST("/config/reload", configAdminHandler.HandleReload)
 		admin.GET("/pi", piConfigHandler.HandleStatus)
 		admin.POST("/pi/sync", piConfigHandler.HandleSync)
 		admin.GET("/zcode", clientConfigHandler.HandleZCodeStatus)
@@ -359,6 +358,8 @@ func runCommand(args []string) error {
 		}
 		_, err := fmt.Fprintln(os.Stdout, version)
 		return err
+	case "config":
+		return runConfigCommand(args[1:])
 	case "benchmark":
 		return benchmarkModels(args[1:])
 	case "setup":
