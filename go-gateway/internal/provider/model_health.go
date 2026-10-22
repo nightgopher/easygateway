@@ -158,7 +158,7 @@ func (r *Router) Doctor(ctx context.Context, probeAnonymous bool) (DoctorReport,
 			if rt == nil || !rt.enabled || !rt.anonymousProbe || !providerAvailable(p) {
 				continue
 			}
-			if cp, ok := p.(CapabilityProvider); ok && (hasCapabilityFlag(cp.Capabilities(), CapabilityEmbedding) || hasCapabilityFlag(cp.Capabilities(), CapabilityTranscription)) {
+			if cp, ok := p.(CapabilityProvider); ok && (hasCapabilityFlag(cp.Capabilities(), CapabilityEmbedding) || hasCapabilityFlag(cp.Capabilities(), CapabilityTranscription) || hasCapabilityFlag(cp.Capabilities(), CapabilitySystemOne)) {
 				continue
 			}
 			targets = append(targets, target{name, p, rt})

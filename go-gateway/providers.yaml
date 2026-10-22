@@ -707,20 +707,30 @@ providers:
         capabilities: [text, vision, tool_calling, streaming, reasoning]
         max_input_tokens: 1000000
         max_output_tokens: 65536
-      # Jev 1.13 免费档（2026-10-22 挂载，清单见上游 /zen/v1/models）。能力取
-      # dsh-our-free-model catalog 实测值：无 vision、非 reasoning，32k 上下文 / 4k 输出。
-      # ⚠️ 2026-10-22 实测：上游免费池对 jev-1.13-free 三条 wire 均 400
-      # ModelProtocolUnsupported（带桌面端指纹也一样，其它免费模型正常），系上游故障。
+  # Jev uses System One state/questions and JSON answers, not chat/completions.
+  # https://opencode.ai/v2/docs/console/models/#jev
+  - name: opencode-systemone-free
+    type: systemone
+    url: https://opencode.ai/inference/systemone/v1/systemone
+    api_key_env: OPENCODE_API_KEY
+    allow_no_key: true
+    models:
       - id: jev-1.13-free
-        capabilities: [text, streaming]
-        max_input_tokens: 32768
-        max_output_tokens: 4096
-      # Jev 1.13 付费档：走渠道设备码登录后的正规 Bearer key 调用（免费档限制
-      # 不适用于已授权的付费模型）。2026-10-22 注册，等待账号登录授权后生效。
+        protocol: systemone
+        capabilities: [systemone]
+        input_modalities: [text]
+        description: "结构化判断：noul / choice / score。免费额度由上游控制；POST /v1/systemone。"
+
+  - name: opencode-systemone
+    type: systemone
+    url: https://opencode.ai/inference/systemone/v1/systemone
+    api_key_env: OPENCODE_API_KEY
+    models:
       - id: jev-1.13
-        capabilities: [text, streaming]
-        max_input_tokens: 32768
-        max_output_tokens: 4096
+        protocol: systemone
+        capabilities: [systemone]
+        input_modalities: [text]
+        description: "System One 结构化判断；需要 OpenCode 工作区 API Key，设备码登录不能替代。"
 
   # Kilo AI 公共网关免费池：无需 Key（allow_no_key）。上游会记录 prompt 并用于改进服务，
   # 请勿经此 Provider 发送敏感内容；模型清单与额度由上游决定。

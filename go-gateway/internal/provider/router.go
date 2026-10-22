@@ -271,6 +271,12 @@ func (r *Router) ModelUsable(modelName string) bool {
 // provider. If no configured provider supports the request, returning a client
 // error is safer than dropping an image and retrying a text-only provider.
 func (r *Router) RouteForRequest(modelName string, req *Request) ([]Provider, error) {
+	r.mu.RLock()
+	info := r.models[modelName]
+	r.mu.RUnlock()
+	if req != nil && info.Protocol == "systemone" {
+		return nil, &UnsupportedCapabilityError{Model: modelName, Required: req.RequiredCapabilities(), Endpoint: "/v1/systemone"}
+	}
 	providers, err := r.Route(modelName)
 	if err != nil {
 		return nil, err

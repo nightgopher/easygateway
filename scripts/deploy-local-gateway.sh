@@ -184,6 +184,20 @@ try:
     elif status != 200:
         raise RuntimeError(f"/admin/assistant/prompt failed: status={status}")
 
+    # Verify the native route without sending any inference request. This also
+    # permits upgrading old runtime YAML before migrating its Jev definitions.
+    for authenticated, expected in ((False, 401), (True, 400)):
+        headers = {"Content-Type": "application/json"}
+        if authenticated:
+            headers["Authorization"] = f"Bearer {token}"
+        req = Request(urljoin(base, "/v1/systemone"), data=b"{}", headers=headers)
+        try:
+            status = urlopen(req, timeout=2).status
+        except HTTPError as error:
+            status = error.code
+        if status != expected:
+            raise RuntimeError(f"System One preflight failed: status={status}, expected={expected}")
+
     for path in ("/", "/dashboard", "/dashboard/models", "/assets/index.js", "/favicon.ico"):
         status, _ = request(path, authenticated=True)
         if status != 404:

@@ -48,9 +48,13 @@ type ModelInfo struct {
 type UnsupportedCapabilityError struct {
 	Model    string
 	Required []string
+	Endpoint string
 }
 
 func (e *UnsupportedCapabilityError) Error() string {
+	if e.Endpoint != "" {
+		return fmt.Sprintf("model %q uses the System One decision protocol; send state and questions to %s", e.Model, e.Endpoint)
+	}
 	return fmt.Sprintf("model %q does not support request capabilities: %s", e.Model, joinCapabilities(e.Required))
 }
 

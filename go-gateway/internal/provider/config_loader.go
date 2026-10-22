@@ -81,6 +81,9 @@ func NewProviderRegistry() *ProviderRegistry {
 	r.Register("openai", NewOpenAIProviderFromConfig)
 	r.Register("anthropic", NewAnthropicProviderFromConfig)
 	r.Register("chatgpt", NewChatGPTProviderFromConfig)
+	r.Register("systemone", func(cfg *ProviderConfig) (Provider, error) {
+		return NewSystemOneProvider(&Config{Name: cfg.Name, URL: cfg.URL, APIKey: providerAPIKeyFromEnv(cfg.APIKeyEnv), RequestTimeout: time.Duration(cfg.RequestTimeoutSeconds) * time.Second}, cfg.AllowNoKey), nil
+	})
 
 	return r
 }
@@ -491,7 +494,7 @@ func normalizeModelCapabilities(capabilities []string) []string {
 		seen[capability] = true
 		result = append(result, capability)
 	}
-	if !seen[CapabilityText] {
+	if !seen[CapabilityText] && !seen[CapabilitySystemOne] {
 		result = append(result, CapabilityText)
 	}
 	return result
@@ -505,6 +508,8 @@ func modelInputModalities(capabilities, explicit []string) []string {
 	for _, capability := range capabilities {
 		switch capability {
 		case CapabilityText:
+			modalities = append(modalities, "text")
+		case CapabilitySystemOne:
 			modalities = append(modalities, "text")
 		case CapabilityVision:
 			modalities = append(modalities, "image")

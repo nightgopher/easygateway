@@ -96,7 +96,7 @@ const modelCategoryAll = "全部能力"
 
 // modelCategories 是模型页的能力分类，值映射到网关能力名；
 // 向量与语音转写模型在目录里与对话模型并列，靠分类区分用途。
-var modelCategories = []string{modelCategoryAll, "文本", "视觉", "视频", "向量", "语音转写", "推理", "工具调用"}
+var modelCategories = []string{modelCategoryAll, "文本", "视觉", "视频", "向量", "语音转写", "结构化判断", "推理", "工具调用"}
 
 // modelInCategory 报告模型是否属于所选能力分类。
 func modelInCategory(m Model, category string) bool {
@@ -106,7 +106,8 @@ func modelInCategory(m Model, category string) bool {
 	capability := map[string]string{
 		"文本": "text", "视觉": "vision", "视频": "video",
 		"向量": "embedding", "语音转写": "audio_transcription",
-		"推理": "reasoning", "工具调用": "tool_calling",
+		"结构化判断": "systemone",
+		"推理":    "reasoning", "工具调用": "tool_calling",
 	}[category]
 	if capability == "" {
 		return true
