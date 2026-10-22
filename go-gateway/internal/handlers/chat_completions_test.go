@@ -100,8 +100,66 @@ func TestChatCompletionsHandlerReturnsOpenAIResponse(t *testing.T) {
 	if message["content"] != "hello from gateway" {
 		t.Fatalf("expected assistant content, got %#v", message["content"])
 	}
+	if _, ok := message["reasoning_content"]; ok {
+		t.Fatalf("reasoning_content should be omitted when the provider returns no thinking, got %#v", message["reasoning_content"])
+	}
 	if choice["finish_reason"] != "stop" {
 		t.Fatalf("expected finish_reason stop, got %#v", choice["finish_reason"])
+	}
+}
+
+func TestChatCompletionsHandlerIncludesReasoningContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logger := log.New(io.Discard, "", 0)
+	router := provider.NewRouter(logger)
+	router.RegisterChain("coding", []string{"stub"})
+	router.RegisterProvider("stub", &stubChatProvider{
+		name: "stub",
+		resp: &provider.Response{
+			ID:         "msg_reasoning",
+			Type:       "message",
+			Role:       "assistant",
+			Model:      "glm-5.3-flash",
+			StopReason: "max_tokens",
+			Content: []provider.ContentBlock{
+				{Type: "thinking", Thinking: "checking the token budget"},
+			},
+		},
+	})
+
+	engine := gin.New()
+	engine.POST("/v1/chat/completions", NewChatCompletionsHandler(router, logger).Handle)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"coding","messages":[{"role":"user","content":"reply briefly"}],"max_tokens":20}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Choices []struct {
+			Message struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(got.Choices) != 1 {
+		t.Fatalf("expected one choice, got %#v", got.Choices)
+	}
+	if got.Choices[0].Message.Content != "" {
+		t.Fatalf("expected empty content for a reasoning-only response, got %q", got.Choices[0].Message.Content)
+	}
+	if got.Choices[0].Message.ReasoningContent != "checking the token budget" {
+		t.Fatalf("expected reasoning_content to be preserved, got %q", got.Choices[0].Message.ReasoningContent)
+	}
+	if got.Choices[0].FinishReason != "length" {
+		t.Fatalf("expected finish_reason length, got %q", got.Choices[0].FinishReason)
 	}
 }
 
@@ -357,10 +415,65 @@ func TestChatCompletionsHandlerStreamsOpenAISSE(t *testing.T) {
 	if !strings.Contains(bodyText, `"content":"Hello"`) {
 		t.Fatalf("expected streamed content chunk, got %s", bodyText)
 	}
+	if strings.Contains(bodyText, `"reasoning_content"`) {
+		t.Fatalf("reasoning_content should be omitted when the provider emits no thinking, got %s", bodyText)
+	}
 	if !strings.Contains(bodyText, `"finish_reason":"stop"`) {
 		t.Fatalf("expected stop finish_reason, got %s", bodyText)
 	}
 	if !strings.Contains(bodyText, `data: [DONE]`) {
+		t.Fatalf("expected DONE sentinel, got %s", bodyText)
+	}
+}
+
+func TestChatCompletionsHandlerStreamsReasoningContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logger := log.New(io.Discard, "", 0)
+	router := provider.NewRouter(logger)
+	stub := &stubChatProvider{
+		name: "stub",
+		streamData: strings.Join([]string{
+			"event: message_start",
+			`data: {"type":"message_start","message":{"id":"msg_stream_reasoning","model":"glm-5.3-flash"}}`,
+			"",
+			"event: content_block_start",
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+			"",
+			"event: content_block_delta",
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"checking the token budget"}}`,
+			"",
+			"event: content_block_stop",
+			`data: {"type":"content_block_stop","index":0}`,
+			"",
+			"event: message_delta",
+			`data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":20}}`,
+			"",
+			"event: message_stop",
+			`data: {"type":"message_stop"}`,
+			"",
+		}, "\n"),
+	}
+	router.RegisterProvider("stub", stub)
+	router.RegisterChain("coding", []string{"stub"})
+
+	engine := gin.New()
+	engine.POST("/v1/chat/completions", NewChatCompletionsHandler(router, logger).Handle)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"coding","stream":true,"messages":[{"role":"user","content":"reply briefly"}],"max_tokens":20}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	bodyText := w.Body.String()
+	if !strings.Contains(bodyText, `"reasoning_content":"checking the token budget"`) {
+		t.Fatalf("expected reasoning delta to be preserved in OpenAI SSE, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, `"finish_reason":"length"`) {
+		t.Fatalf("expected max_tokens to map to finish_reason length, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, "data: [DONE]") {
 		t.Fatalf("expected DONE sentinel, got %s", bodyText)
 	}
 }

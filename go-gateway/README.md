@@ -359,6 +359,8 @@ curl http://localhost:4001/readyz
 
 ### OpenAI 兼容：chat completions（非流式）
 
+对于支持推理的模型，`max_tokens` 也计入推理 token。上游返回推理内容时，非流式响应会通过 `message.reasoning_content` 返回；若 `content` 为空且 `finish_reason` 为 `length`，可能表示 token 预算已用于推理。
+
 ```bash
 curl -X POST http://localhost:4001/v1/chat/completions \
   -H "Authorization: Bearer sk-local-gateway-xxx" \
@@ -374,6 +376,8 @@ curl -X POST http://localhost:4001/v1/chat/completions \
 ```
 
 ### OpenAI 兼容：chat completions（流式）
+
+上游提供推理内容时，流式响应会通过 `choices[].delta.reasoning_content` 返回增量。
 
 ```bash
 curl -N -X POST http://localhost:4001/v1/chat/completions \

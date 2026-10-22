@@ -33,10 +33,11 @@ type openAIChatCompletionsRequest struct {
 }
 
 type openAIChatMessage struct {
-	Role       string               `json:"role"`
-	Content    openAIMessageContent `json:"content"`
-	ToolCalls  []openAIChatToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
+	Role             string               `json:"role"`
+	Content          openAIMessageContent `json:"content"`
+	ReasoningContent string               `json:"reasoning_content,omitempty"`
+	ToolCalls        []openAIChatToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string               `json:"tool_call_id,omitempty"`
 }
 
 // openAIMessageContent 支持字符串和数组两种 content 格式
@@ -200,9 +201,10 @@ type openAIStreamToolCallDelta struct {
 }
 
 type openAIStreamDelta struct {
-	Role      string                      `json:"role,omitempty"`
-	Content   string                      `json:"content,omitempty"`
-	ToolCalls []openAIStreamToolCallDelta `json:"tool_calls,omitempty"`
+	Role             string                      `json:"role,omitempty"`
+	Content          string                      `json:"content,omitempty"`
+	ReasoningContent string                      `json:"reasoning_content,omitempty"`
+	ToolCalls        []openAIStreamToolCallDelta `json:"tool_calls,omitempty"`
 }
 
 func NewChatCompletionsHandler(router *provider.Router, logger *log.Logger) *openAIChatCompletionsHandler {
@@ -502,12 +504,13 @@ func toProviderRequest(req *openAIChatCompletionsRequest) (*provider.Request, er
 func toOpenAIChatCompletionResponse(resp *provider.Response) *openAIChatCompletionResponse {
 	message := openAIChatMessage{Role: "assistant"}
 	var content string
+	var reasoningContent string
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":
 			content += block.Text
 		case "thinking":
-			// 跳过 MiMo/Anthropic 的思维链块，不展示
+			reasoningContent += block.Thinking
 		case "tool_use":
 			arguments := "{}"
 			if len(block.Input) > 0 {
@@ -524,6 +527,7 @@ func toOpenAIChatCompletionResponse(resp *provider.Response) *openAIChatCompleti
 		}
 	}
 	message.Content = openAIMessageContent{Str: content, IsStr: true}
+	message.ReasoningContent = reasoningContent
 	promptTokens := totalPromptTokens(resp)
 	usage := openAIChatCompletionUsage{
 		PromptTokens:     promptTokens,
@@ -822,6 +826,25 @@ func anthropicEventToOpenAIChunk(eventType, payload string, created int64, curre
 				Choices: []openAIStreamChunkChoice{{
 					Index: 0,
 					Delta: openAIStreamDelta{Content: evt.Delta.Text},
+				}},
+			}, false, nil
+		case "thinking_delta":
+			var evt struct {
+				Delta struct {
+					Thinking string `json:"thinking"`
+				} `json:"delta"`
+			}
+			if err := json.Unmarshal([]byte(payload), &evt); err != nil {
+				return nil, false, err
+			}
+			return &openAIStreamChunkResponse{
+				ID:      currentID,
+				Object:  "chat.completion.chunk",
+				Created: created,
+				Model:   currentModel,
+				Choices: []openAIStreamChunkChoice{{
+					Index: 0,
+					Delta: openAIStreamDelta{ReasoningContent: evt.Delta.Thinking},
 				}},
 			}, false, nil
 		case "input_json_delta":
