@@ -33,6 +33,10 @@ func fixture(t *testing.T) (*App, chan func(), chan string) {
 			requests <- r.Method + " " + r.URL.Path + " " + string(data)
 		}
 		switch r.URL.Path {
+		case "/admin/config/status":
+			w.Write([]byte(`{"generation":7,"last_applied_at":"2026-10-22T17:00:00Z"}`))
+		case "/admin/config/cors":
+			w.Write([]byte(`{"allowed_origins":["https://trusted.example"]}`))
 		case "/admin/fs/dirs":
 			if r.URL.Query().Get("path") == "/tmp/root/sub" {
 				w.Write([]byte(`{"path":"/tmp/root/sub","parent":"/tmp/root","dirs":[]}`))

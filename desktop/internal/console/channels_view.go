@@ -88,6 +88,21 @@ func (a *App) channelsView(c *ui.Context) {
 						muted(c, "点击登录，在浏览器完成账号授权，无需额外应用密钥。")
 					}
 				}
+				if len(ch.ModelHealth) > 0 {
+					available, verified := 0, 0
+					for _, health := range ch.ModelHealth {
+						if health.Available {
+							available++
+						}
+						if health.Status == "available" {
+							verified++
+						}
+					}
+					muted(c, fmt.Sprintf("模型可尝试 %d/%d · 近期探活通过 %d", available, len(ch.ModelHealth), verified))
+					if available == 0 {
+						chip(c, "模型不可用", c.Theme().Danger)
+					}
+				}
 				if a.channelSetup == ch.ID {
 					ui.Text(c, ch.SetupHint).FontSize(13).TextColor(c.Theme().TextMuted).Selectable()
 				}

@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -103,8 +104,12 @@ func probeVia(ctx context.Context, model string, maxTokens int, forward func(con
 
 	var providerErr *ProviderError
 	if errors.As(err, &providerErr) {
+		status := classifyProbeStatus(providerErr.StatusCode)
+		if providerErr.StatusCode == http.StatusBadRequest && strings.Contains(providerErr.Message, "ModelProtocolUnsupported") {
+			status = ProbeOffline
+		}
 		return ProbeResult{
-			Status:     classifyProbeStatus(providerErr.StatusCode),
+			Status:     status,
 			StatusCode: providerErr.StatusCode,
 			RetryAfter: providerErr.RetryAfter,
 			Detail:     providerErr.Message,

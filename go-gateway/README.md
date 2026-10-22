@@ -133,7 +133,7 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 |------|------|------|------|
 | `/health` | GET | 无需 | 健康检查 |
 | `/readyz` | GET | 无需 | 就绪检查；未加载任何 Provider 时返回 503 |
-| `/v1/models` | GET | Bearer | 列出可用模型 |
+| `/v1/models` | GET | Bearer | 模型目录及健康注解；`?available_only=true` 过滤当前不可用项 |
 | `/v1/chat/completions` | POST | Bearer | OpenAI 兼容接口，支持流式 |
 | `/v1/messages` | POST | Bearer | Anthropic 兼容接口，支持流式 |
 | `/v1/responses` | POST | Bearer | OpenAI Responses API，Codex CLI 专用，支持流式 |
@@ -157,6 +157,11 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 | `/admin/routes` | GET | 查看模型的故障转移顺序 |
 | `/admin/routes/:model` | PUT | 用 `{"providers":[...]}` 调整同一链路的优先级 |
 | `/admin/models/:model` | PUT | 调整模型 `capabilities` 和 `input_modalities` |
+| `/admin/models/doctor` | POST | 批量检查模型状态；`{"probe_anonymous":true}` 显式探活匿名聊天模型 |
+| `/admin/config/status` | GET | 配置代次、最近生效时间与重载失败原因 |
+| `/admin/config/check` | POST | 离线预检当前 YAML，不应用变更 |
+| `/admin/config/reload` | POST | 校验、构建并原子重载当前 YAML |
+| `/admin/config/cors` | GET / PUT | 读取 / 保存 `{"allowed_origins":[...]}` 并热加载 |
 | `/admin/pi` | GET | 查看 Pi 模型清单同步状态（期望清单、当前清单、差异） |
 | `/admin/pi/sync` | POST | 把精选模型清单同步到 `~/.pi/agent/models.json`（写入前自动备份），等价于 `llm-gateway setup pi`，也可在控制面板「设置 → Pi 集成」一键操作 |
 | `/admin/archives` | GET | 分页查询对话归档（`limit`/`offset`） |
@@ -727,3 +732,34 @@ OpenCode 免费档仅允许官方 OpenCode 客户端使用，上游登录不能�
 重载先校验并独立构建，再原子替换 Provider、模型与路由表；已取得 Provider 的在途请求继续完成。格式错误、无效引用或新建/原先已装载的 Provider 初始化失败时保留旧配置。启动时因未配置凭据而跳过的可选 Provider 可以继续保持跳过，并在报告中给出警告。账号池与已有订阅客户端复用，管理员的禁用状态和模型能力覆盖保留，已删除的模型与路由移出目录。路由手动排序以 YAML 为准重新应用，熔断及历史探测状态重新开始。
 
 这里只重载 `providers.yaml`；端口、master/admin token 及其他 `.env` 启动配置仍需重启。配置中的 DeepV/Copilot 引用是代码注册的集成实例，预检不证明相应集成已启用或有上游权限。
+
+### 模型健康目录与 doctor
+
+`/v1/models` 和短路径 `/models` 保留完整目录，每项新增 `gateway_status`：
+
+- `available`：当前是否可尝试。未登录、官方客户端限制、管理员禁用、临时熔断/限流或未过期的失败探活会使其为 false；
+- `status`：`available` 表示近期探活成功，`unavailable` 表示确定不可用，`degraded` 表示临时受限，`unknown` 表示尚未验证或探活已过期；
+- `reason`、`checked_at`：本次本地状态判定及时间；有探活时另有 `probe_status`、`last_probe_at` 和 `probe_expires_at`。
+
+`GET /v1/models?available_only=true` 只返回 `available=true` 的项。凭据已配置但未探活的模型仍可尝试，状态明确为 `unknown`，不声称上游鉴权或推理已通过；fallback 链中任一候选可尝试即可保留该链。公开目录不回传上游原始错误正文、密钥或请求内容。Admin 模型与渠道列表也提供健康信息，桌面端展示原因和探活时间。
+
+`easygateway doctor` 调用当前网关的管理接口，只检查本地可用性，不发推理请求。设置 `ADMIN_TOKEN` 或 `LITELLM_MASTER_KEY`；可用 `--endpoint http://127.0.0.1:4001` 指定网关，`--timeout 75s` 指定客户端期限。
+
+`easygateway doctor --probe-anonymous` 或桌面「模型与路由 → 探活匿名模型」会对 `allow_no_key: true` 且实际未配置 API key 的聊天模型发 `max_tokens=1` 探活，最多 4 个并发、每次 20 秒、服务端整批 60 秒。嵌入/转写、付费 key、账号订阅渠道均不参与；它们的上游鉴权与推理是否有效仍需明确触发已有的单 Provider 手动探测（会产生真实调用）。匿名模型过小预算造成的普通参数错误会显示降级；明确的 `ModelProtocolUnsupported` 拒绝会显示不可用。
+
+`MODEL_HEALTH_TTL_SECONDS` 默认 900；过期探活不再作为有效结论，临时熔断仍按其恢复时间判定。`MODEL_HEALTH_INTERVAL_SECONDS=0` 默认关闭后台 doctor；设置正数秒数启用定时检查，只有同时设置 `MODEL_HEALTH_PROBE_ANONYMOUS=true` 才会自动调用匿名模型。结果留在当前进程内，重启或配置重载后重新验证；不会把旧故障永久写进目录。
+
+### 可选 CORS 白名单
+
+默认 `cors.allowed_origins: []` 保持 `Access-Control-Allow-Origin: *`，适用于本机个人网关与自己托管的静态页面。需要限制浏览器来源时，在 `providers.yaml` 配置精确 origin：
+
+```yaml
+cors:
+  allowed_origins:
+    - https://hwj123hwj.github.io
+    - http://localhost:5173
+```
+
+随后热加载，或直接在桌面「设置 → 网关配置 → 浏览器跨域来源」逐行填写并保存。管理接口 `PUT /admin/config/cors` 接收 `{"allowed_origins":["https://hwj123hwj.github.io"]}`，验证完整配置并原子保存到 YAML 后热加载；验证或写入失败保留原文件与策略。空数组恢复默认 `*`，不接受通配符、路径、凭据、query、fragment 或 `null` 来源。
+
+白名单匹配时回显 Origin 并设置 `Vary: Origin`；不匹配的实际请求与 OPTIONS 返回 403 且没有允许跨域响应头。CORS 不使用 cookie 凭据；预检不需要 token，实际 API 请求仍须鉴权。原生客户端与没有 Origin 的请求仍按原有认证规则处理，因此白名单只能约束浏览器，不能替代 API key 管理。

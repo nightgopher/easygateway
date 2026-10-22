@@ -92,14 +92,21 @@ func (h *ChannelAdminHandler) channelStatus(ch channel.Channel) gin.H {
 	accounts := ch.Accounts()
 	info := channel.LoginInfoFor(ch)
 	var models []string
+	healths := map[string]provider.ModelHealth{}
 	if h.router != nil {
 		models = h.router.ChannelProviderNames(ch.Name())
+		for model, health := range h.router.ModelHealths() {
+			if h.router.ModelChannel(model) == ch.Name() {
+				healths[model] = health
+			}
+		}
 	}
 	return gin.H{
 		"login_available": info.Available, "needs_client_config": info.NeedsClientConfig, "local_login_only": info.LocalOnly, "setup_hint": info.SetupHint, "anonymous_available": info.Anonymous, "models": models,
-		"channel":   ch.Name(),
-		"logged_in": accounts.LoggedIn(),
-		"accounts":  accounts.Credentials(),
+		"channel":      ch.Name(),
+		"logged_in":    accounts.LoggedIn(),
+		"accounts":     accounts.Credentials(),
+		"model_health": healths,
 	}
 }
 

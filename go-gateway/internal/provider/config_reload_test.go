@@ -114,11 +114,13 @@ func TestConfigReloadPreservesControlsAndConcurrentReaders(t *testing.T) {
 	}
 	// A declared model with lost credentials must not replace an active client.
 	t.Setenv("RELOAD_TEST_KEY", "")
-	body := fmt.Sprintf("providers:\n - name: test\n   type: openai\n   url: https://example.invalid\n   api_key_env: RELOAD_TEST_KEY\n   models: [{id: model}]\n")
-	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reloader.Reload(); err == nil {
-		t.Fatal("lost credentials accepted")
+	for _, id := range []string{"model", "renamed"} {
+		body := fmt.Sprintf("providers:\n - name: test\n   type: openai\n   url: https://example.invalid\n   api_key_env: RELOAD_TEST_KEY\n   models: [{id: %s}]\n", id)
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reloader.Reload(); err == nil {
+			t.Fatalf("lost credentials accepted after model ID %s", id)
+		}
 	}
 }

@@ -36,6 +36,9 @@ type Config struct {
 	FallbackWaitSeconds         int
 	RateLimitInitialSeconds     int
 	RateLimitMaxSeconds         int
+	ModelHealthTTLSeconds       int
+	ModelHealthIntervalSeconds  int
+	ModelHealthProbeAnonymous   bool
 	Archive                     archive.Config
 	Memory                      memory.Config
 	Assistant                   assistant.Config
@@ -68,6 +71,9 @@ func Load() (*Config, error) {
 		FallbackWaitSeconds:         getEnvInt("ROUTING_FALLBACK_WAIT_SECONDS", 180),
 		RateLimitInitialSeconds:     getEnvInt("RATE_LIMIT_INITIAL_SECONDS", 30),
 		RateLimitMaxSeconds:         getEnvInt("RATE_LIMIT_MAX_SECONDS", 300),
+		ModelHealthTTLSeconds:       getEnvInt("MODEL_HEALTH_TTL_SECONDS", 900),
+		ModelHealthIntervalSeconds:  getEnvInt("MODEL_HEALTH_INTERVAL_SECONDS", 0),
+		ModelHealthProbeAnonymous:   getEnvBool("MODEL_HEALTH_PROBE_ANONYMOUS", false),
 		Archive:                     loadArchiveConfig(),
 		Memory:                      loadMemoryConfig(),
 		Assistant:                   loadAssistantConfig(),

@@ -5,6 +5,10 @@
 #     后注册的那个用 供应商-模型 限定，保证实例名唯一
 #   - 客户端只调用 chains 里定义的链，链内按顺序持续降级
 
+# 留空保留所有网页来源均可跨域访问；配置后仅放行这些 HTTP(S) origin。
+cors:
+  allowed_origins: []
+
 providers:
   # 智谱 GLM
   - name: glm

@@ -26,6 +26,8 @@ type Router struct {
 	circuitConfig  CircuitBreakerConfig
 	policy         RoutingPolicy
 	rateGroups     map[string]*CircuitBreaker
+	healthTTL      time.Duration
+	doctorMu       sync.Mutex
 	mu             sync.RWMutex
 	logger         *log.Logger
 }
@@ -38,9 +40,10 @@ type providerRuntime struct {
 	// lastProbe 保存最近一次上游探测的结论。它与熔断器分开：熔断只反映连续
 	// 请求失败，探测结论是「人工验证过上游可用性」的证据，面板据此区分
 	// 「在线」和「只是没失败过」。
-	lastProbe   ProbeResult
-	lastProbeAt time.Time
-	hasProbe    bool
+	lastProbe      ProbeResult
+	lastProbeAt    time.Time
+	hasProbe       bool
+	anonymousProbe bool
 }
 
 type modelCapabilityOverride struct {
@@ -108,6 +111,7 @@ func NewRouterWithCircuitConfig(logger *log.Logger, circuitConfig CircuitBreaker
 		circuitConfig:  circuitConfig,
 		policy:         DefaultRoutingPolicy(),
 		rateGroups:     make(map[string]*CircuitBreaker),
+		healthTTL:      15 * time.Minute,
 		logger:         logger,
 	}
 }
@@ -647,6 +651,13 @@ func (r *Router) CheckProviderHealth(ctx context.Context, name string) ProbeResu
 	}
 	if !runtime.enabled {
 		return ProbeResult{Status: ProbeOffline, Detail: fmt.Sprintf("provider %s is disabled", name)}
+	}
+	if !providerAvailable(p) {
+		detail := "provider credentials unavailable"
+		if reason, ok := p.(interface{ UnavailableReason() string }); ok && reason.UnavailableReason() != "" {
+			detail = reason.UnavailableReason()
+		}
+		return ProbeResult{Status: ProbeOffline, Detail: detail}
 	}
 
 	result := probeProvider(ctx, p)

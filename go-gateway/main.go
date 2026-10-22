@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/weijian/go-llm-gateway/internal/archive"
 	"github.com/weijian/go-llm-gateway/internal/assistant"
@@ -23,6 +22,7 @@ import (
 	"github.com/weijian/go-llm-gateway/internal/ccswitchconfig"
 	"github.com/weijian/go-llm-gateway/internal/channel"
 	"github.com/weijian/go-llm-gateway/internal/config"
+	"github.com/weijian/go-llm-gateway/internal/corspolicy"
 	"github.com/weijian/go-llm-gateway/internal/handlers"
 	"github.com/weijian/go-llm-gateway/internal/memory"
 	"github.com/weijian/go-llm-gateway/internal/metrics"
@@ -109,6 +109,7 @@ func main() {
 	})
 
 	router.SetRoutingPolicy(provider.RoutingPolicy{FirstOutputTimeout: time.Duration(cfg.FirstOutputSeconds) * time.Second, ReasoningFirstOutputTimeout: time.Duration(cfg.ReasoningFirstOutputSeconds) * time.Second, StreamIdleTimeout: time.Duration(cfg.StreamIdleSeconds) * time.Second, AttemptTimeout: time.Duration(cfg.AttemptSeconds) * time.Second, FallbackWaitBudget: time.Duration(cfg.FallbackWaitSeconds) * time.Second})
+	router.SetModelHealthTTL(time.Duration(cfg.ModelHealthTTLSeconds) * time.Second)
 
 	// 账号渠道（第二类）：交互式登录取得凭据的渠道。必须先于 providers.yaml
 	// 装载注册工厂，因为 type: channel 的条目在装载时就要构造 provider 实例。
@@ -131,11 +132,13 @@ func main() {
 	if cfg.DeepVEnabled {
 		setupDeepVProviders(nativeProviders, cfg, logger)
 	}
+	corsPolicy := corspolicy.New()
 	configPath := "providers.yaml"
 	reloader := provider.NewConfigReloader(router, configPath, externalConfigProviders(), func(candidate *provider.Router) error {
 		candidate.IncludeMissingConfiguration(nativeProviders)
 		return nil
 	})
+	reloader.SetCORSPolicy(corsPolicy)
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		setupDefaultProviders(router, cfg, logger)
 		router.IncludeMissingConfiguration(nativeProviders)
@@ -143,6 +146,7 @@ func main() {
 		logger.Fatalf("Failed to load providers.yaml: %v", err)
 	}
 	watchConfigReload(shutdownSignals, reloader, logger)
+	startModelDoctor(shutdownSignals, router, time.Duration(cfg.ModelHealthIntervalSeconds)*time.Second, cfg.ModelHealthProbeAnonymous, logger)
 
 	// 创建 Gin 引擎
 	gin.SetMode(gin.ReleaseMode)
@@ -153,15 +157,7 @@ func main() {
 	engine.UseRawPath = true
 	engine.UnescapePathValues = false
 
-	// CORS 配置（兼容外部 API 客户端的跨域请求）
-	engine.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With", "X-Request-ID", "X-AI-Source", "X-Conversation-ID", "X-Session-ID"},
-		ExposeHeaders:    []string{"Content-Length", "Content-Type", "X-Request-ID", "X-Upstream-Request-ID"},
-		AllowCredentials: false,
-		MaxAge:           12 * time.Hour,
-	}))
+	engine.Use(corsPolicy.Middleware())
 
 	engine.Use(middleware.RequestID())
 	engine.Use(middleware.Logging(logger, collector))
@@ -271,6 +267,7 @@ func main() {
 		admin.POST("/providers/:name/reset", adminHandler.HandleResetProvider)
 		admin.POST("/providers/:name/health-check", adminHandler.HandleCheckProvider)
 		admin.GET("/models", adminHandler.HandleModels)
+		admin.POST("/models/doctor", adminHandler.HandleDoctor)
 		admin.PUT("/models/:model", adminHandler.HandleUpdateModel)
 		admin.GET("/routes", adminHandler.HandleRoutes)
 		admin.PUT("/routes/:model", adminHandler.HandleUpdateRoute)
@@ -278,6 +275,8 @@ func main() {
 		admin.GET("/health", adminHandler.HandleHealth)
 		admin.GET("/config", adminHandler.HandleConfig)
 		admin.GET("/config/status", configAdminHandler.HandleStatus)
+		admin.GET("/config/cors", configAdminHandler.HandleCORS)
+		admin.PUT("/config/cors", configAdminHandler.HandleUpdateCORS)
 		admin.POST("/config/check", configAdminHandler.HandleCheck)
 		admin.POST("/config/reload", configAdminHandler.HandleReload)
 		admin.GET("/pi", piConfigHandler.HandleStatus)
@@ -360,6 +359,8 @@ func runCommand(args []string) error {
 		return err
 	case "config":
 		return runConfigCommand(args[1:])
+	case "doctor":
+		return doctorCommand(args[1:])
 	case "benchmark":
 		return benchmarkModels(args[1:])
 	case "setup":

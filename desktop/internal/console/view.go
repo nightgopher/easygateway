@@ -779,6 +779,10 @@ func (a *App) overviewView(c *ui.Context) {
 	}).Grow(1)
 }
 func (a *App) modelsView(c *ui.Context) {
+	ui.Row(c).Wrap().Gap(8).Children(func() {
+		ui.Button(c, "探活匿名模型").Disabled(a.busy != "").OnClick(a.probeAnonymousModels)
+		muted(c, "批量探活只调用匿名模型；付费与账号模型需单独验证。")
+	})
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.SearchField(c, &a.modelFilter).Label("搜索模型").Grow(1)
 		if ui.Select(c, &a.modelCategory, modelCategories).Label("能力分类").Changed() {
@@ -832,6 +836,12 @@ func (a *App) modelsView(c *ui.Context) {
 					}
 				})
 				meta(c, "请求 "+shortNumber(int64(m.Requests)), "Tokens "+shortNumber(m.Tokens), "延迟 "+formatLatency(m.AvgLatency), "缓存命中 "+percent(m.CacheHitRate))
+				if m.Health.Reason != "" {
+					muted(c, m.Health.Reason)
+				}
+				if m.Health.LastProbeAt != "" {
+					muted(c, "探活时间 "+m.Health.LastProbeAt+" · 有效至 "+m.Health.ProbeExpiresAt)
+				}
 			})
 		})
 	}).Grow(1)

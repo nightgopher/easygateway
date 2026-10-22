@@ -26,16 +26,25 @@ type Provider struct {
 	NextRetry   string  `json:"next_retry_at"`
 }
 type Model struct {
-	Name         string   `json:"model"`
-	Provider     string   `json:"provider"`
-	Providers    []string `json:"providers"`
-	Status       string   `json:"status"`
-	Requests     int      `json:"requests"`
-	Tokens       int64    `json:"total_tokens"`
-	AvgLatency   float64  `json:"avg_latency"`
-	Capabilities []string `json:"capabilities"`
-	Modalities   []string `json:"input_modalities"`
-	CacheHitRate *float64 `json:"cache_hit_rate"`
+	Health       ModelHealth `json:"health"`
+	Name         string      `json:"model"`
+	Provider     string      `json:"provider"`
+	Providers    []string    `json:"providers"`
+	Status       string      `json:"status"`
+	Requests     int         `json:"requests"`
+	Tokens       int64       `json:"total_tokens"`
+	AvgLatency   float64     `json:"avg_latency"`
+	Capabilities []string    `json:"capabilities"`
+	Modalities   []string    `json:"input_modalities"`
+	CacheHitRate *float64    `json:"cache_hit_rate"`
+}
+
+type ModelHealth struct {
+	Status         string `json:"status"`
+	Available      bool   `json:"available"`
+	Reason         string `json:"reason"`
+	LastProbeAt    string `json:"last_probe_at"`
+	ProbeExpiresAt string `json:"probe_expires_at"`
 }
 type Dashboard struct {
 	Summary   Summary    `json:"summary"`
