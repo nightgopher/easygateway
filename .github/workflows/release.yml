@@ -282,8 +282,8 @@ jobs:
           | Linux ARM64 桌面 (.deb) | \`easygateway_${CURRENT_TAG#v}_arm64.deb\` |
           | Linux x86_64 桌面 (用户级安装) | \`easygateway-desktop-install-linux-amd64.sh\` |
           | Linux ARM64 桌面 (用户级安装) | \`easygateway-desktop-install-linux-arm64.sh\` |
-          | Linux x86_64 服务端 (.deb) | \`easygateway-server-${CURRENT_TAG#v}-1_amd64.deb\` |
-          | Linux ARM64 服务端 (.deb) | \`easygateway-server-${CURRENT_TAG#v}-1_arm64.deb\` |
+          | Linux x86_64 服务端 (.deb) | \`easygateway-server_${CURRENT_TAG#v}-1_amd64.deb\` |
+          | Linux ARM64 服务端 (.deb) | \`easygateway-server_${CURRENT_TAG#v}-1_arm64.deb\` |
           | Linux x86_64 | \`gateway-linux-amd64\` |
           | Linux ARM64 | \`gateway-linux-arm64\` |
           | macOS Intel | \`gateway-darwin-amd64\` |
@@ -295,7 +295,7 @@ jobs:
           ### 快速使用
           \`\`\`bash
           # Debian/Ubuntu：安装 deb 包（含 systemd 服务，自动生成 Master Key）
-          sudo dpkg -i easygateway-*-1_$(dpkg --print-architecture).deb
+          sudo dpkg -i easygateway-server_*.deb
           sudo apt-get install -f   # 修复依赖（如有）
           systemctl status easygateway
 
