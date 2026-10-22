@@ -715,3 +715,15 @@ DeepV 的 `claude-haiku-5-5` 不接受 `temperature`；网关转换该模型请�
 `GET /admin/assistant/models` 每次读取当前路由目录，渠道登录、退出或 Provider 启停后无需重启网关。`models` 保持模型 ID 数组，同时新增 `model_options`（`id`、`provider`、`channel`）供客户端搜索模型或渠道名；多渠道 fallback 不强行标成单个渠道。默认模型仍由 `ASSISTANT_MODEL` 决定，但未登录或已停用时不再列为可选模型。
 
 OpenCode 免费档仅允许官方 OpenCode 客户端使用，上游登录不能解除此限制，见 [维护者说明](https://github.com/anomalyco/opencode/issues/49588)。配置中的免费模型保留目录兼容性，网关不将其推荐给助理；渠道页面明确提示此限制。付费模型需在 `providers.yaml` 中添加并获得对应授权。转换器只保留调用方真实工具，不再补不能执行的 bash/read 占位工具。助理继续通过网关自身的 OpenAI 端点调用，保留渠道鉴权、路由、指标与 fallback。
+
+### 配置预检与热加载
+
+在网关工作目录执行 `easygateway config check`，离线检查 `providers.yaml`，无需 master key、登录账号或访问上游。也可指定 `--file /path/providers.yaml`；它读取同目录 `.env`（已有进程环境变量优先）。检查包含全局唯一模型 ID/别名、Provider 实例、能力与输入模态枚举、协议、URL、渠道名、token/超时范围及 fallback 引用；未知 YAML 字段和多文档 YAML 会被拒绝。
+
+必需 `api_key_env` 未设置时默认检查失败；`allow_no_key: true` 的匿名 OpenAI Provider 只给警告。部分渠道尚未配置密钥的安装可执行 `easygateway config check --allow-missing-keys`，把缺失密钥全部作为警告。输出包含 Provider / 模型 / chain 数量；OAuth、DeepV 等运行时授权仍需单独验证。
+
+改配置后可向运行进程发送 `SIGHUP`，或带管理 token 调用 `POST /admin/config/reload`（Windows 也支持）。`POST /admin/config/check` 只预检，`GET /admin/config/status` 返回配置代次、上次成功时间、诊断和最近失败原因。现有 `GET /admin/config` 保持原契约。
+
+重载先校验并独立构建，再原子替换 Provider、模型与路由表；已取得 Provider 的在途请求继续完成。格式错误、无效引用或新建/原先已装载的 Provider 初始化失败时保留旧配置。启动时因未配置凭据而跳过的可选 Provider 可以继续保持跳过，并在报告中给出警告。账号池与已有订阅客户端复用，管理员的禁用状态和模型能力覆盖保留，已删除的模型与路由移出目录。路由手动排序以 YAML 为准重新应用，熔断及历史探测状态重新开始。
+
+这里只重载 `providers.yaml`；端口、master/admin token 及其他 `.env` 启动配置仍需重启。配置中的 DeepV/Copilot 引用是代码注册的集成实例，预检不证明相应集成已启用或有上游权限。

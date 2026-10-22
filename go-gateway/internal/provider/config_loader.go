@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -110,8 +111,14 @@ func LoadProvidersConfig(path string) (*ProvidersConfig, error) {
 	}
 
 	var cfg ProvidersConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, fmt.Errorf("providers configuration must contain exactly one YAML document")
 	}
 
 	for _, p := range cfg.Providers {
@@ -214,22 +221,29 @@ func RegisterProvidersFromConfig(router *Router, cfg *ProvidersConfig, logger in
 		// 账号渠道必须先于 registry.Create 处理：channel 不是 registry 认识的
 		// provider 类型，实例由 main 注入的工厂按渠道名构造，凭据来自交互式登录。
 		if pc.Type == "channel" {
+			channelName := pc.Channel
+			if channelName == "" {
+				channelName = pc.Name
+			}
 			if channelProviderFactory == nil {
 				logger.Printf("Warning: provider %s is a channel but no channel factory is registered", pc.Name)
 				continue
 			}
 			for _, mc := range pc.Models {
-				base, ok := channelProviderFactory(pc.Name, mc.ID)
+				base, ok := channelProviderFactory(channelName, mc.ID)
 				if !ok {
 					logger.Printf("Warning: channel %s not registered, skipping model %s", pc.Name, mc.ID)
 					continue
 				}
 				capabilities := normalizeModelCapabilities(mc.Capabilities)
 				bound := NewBoundModelProviderWrapper(base, mc.ID, capabilities)
-				providerName := providerInstanceName(pc.Name, mc.ID, usedProviderNames)
+				providerName := mc.ProviderName
+				if providerName == "" {
+					providerName = providerInstanceName(pc.Name, mc.ID, usedProviderNames)
+				}
 				usedProviderNames[providerName] = true
 				router.RegisterProvider(providerName, bound)
-				router.SetProviderChannel(providerName, pc.Name)
+				router.SetProviderChannel(providerName, channelName)
 				if pc.RateLimitScope == "channel" {
 					router.SetProviderRateLimitGroup(providerName, pc.Name)
 				}
