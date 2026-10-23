@@ -11,6 +11,11 @@ import (
 // 都去轮换 refresh_token（上游会因此失效）。
 const refreshLead = time.Hour
 
+// refreshCooldown 是同一账号两次续期之间的最小间隔：并发 401 风暴下，
+// 后到的 Refresh 若发现该账号刚被续期过就直接复用，避免旧 refresh_token
+// 二次轮换把账号刷下线。
+const refreshCooldown = 30 * time.Second
+
 // refreshFn 对一个凭据执行一次续期并返回新凭据（不触碰存储）。
 type refreshFn func(ctx context.Context, cred Credential) (Credential, error)
 
@@ -24,14 +29,17 @@ type Accounts struct {
 	client  *oauthClient
 	refresh refreshFn
 
-	mu    sync.RWMutex
-	creds []Credential
-	index int
+	mu        sync.RWMutex
+	creds     []Credential
+	index     int
+	refreshMu sync.Mutex // 串行化令牌续期，避免并发双重刷新
+
+	lastRefresh map[string]time.Time // 账号级最近续期时间（冷却窗口用）
 }
 
 // NewAccounts 构造账号池并立即从存储载入已有凭据。
 func NewAccounts(channel string, store *Store, client *oauthClient, refresh refreshFn) *Accounts {
-	a := &Accounts{channel: channel, store: store, client: client, refresh: refresh}
+	a := &Accounts{channel: channel, store: store, client: client, refresh: refresh, lastRefresh: make(map[string]time.Time)}
 	a.reload()
 	return a
 }
@@ -62,8 +70,8 @@ func (a *Accounts) LoggedIn() bool { return a.BearerToken() != "" }
 func (a *Accounts) BearerToken() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	cred := a.currentLocked()
-	if cred == nil {
+	cred, ok := a.currentLocked()
+	if !ok {
 		return ""
 	}
 	return cred.AccessToken
@@ -77,8 +85,8 @@ func (a *Accounts) BearerToken() string {
 func (a *Accounts) CurrentExtra() map[string]string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	cred := a.currentLocked()
-	if cred == nil || len(cred.Extra) == 0 {
+	cred, ok := a.currentLocked()
+	if !ok || len(cred.Extra) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(cred.Extra))
@@ -123,58 +131,97 @@ type credentialSummary struct {
 
 // Refresh 实现 AuthSource：当前账号临近过期或已过期时续期一次。
 // 返回 true 表示令牌已更新。续期失败但仍有其他账号时会自动换号。
+//
+// refreshMu 串行化续期：并发调用者等待后重读当前凭据，若同账号令牌已被
+// 前一个调用者换新则直接返回，避免用旧 refresh_token 二次轮换把账号刷下线。
 func (a *Accounts) Refresh(ctx context.Context) bool {
-	a.mu.Lock()
-	cred := a.currentLocked()
-	a.mu.Unlock()
-	if cred == nil {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
+	a.mu.RLock()
+	cred, ok := a.currentLocked()
+	cooled := a.cooledDownLocked(cred)
+	a.mu.RUnlock()
+	if !ok {
 		return false
+	}
+	if cooled {
+		// 等待期间同账号已被续期，后到者直接复用新令牌。
+		return true
 	}
 	if !a.refreshable(cred) {
 		a.advance()
 		return a.BearerToken() != ""
 	}
 
-	next, err := a.refresh(ctx, *cred)
+	next, err := a.refresh(ctx, cred)
 	if err != nil {
 		// 续期被上游拒绝（refresh_token 失效）时换下一个账号，而不是死磕一个。
 		a.advance()
 		return a.BearerToken() != ""
 	}
-	a.replace(*cred, next)
+	a.replace(cred, next)
+	a.noteRefreshed(next)
 	return true
 }
 
 // ensureFresh 在发送请求前按 lead-time 静默续期，避免第一个请求先撞一次 401。
 func (a *Accounts) ensureFresh(ctx context.Context) {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
 	a.mu.RLock()
-	cred := a.currentLocked()
+	cred, ok := a.currentLocked()
 	a.mu.RUnlock()
-	if cred == nil || !a.needsRefresh(cred) {
+	if !ok || !a.needsRefresh(cred) {
 		return
 	}
-	if next, err := a.refresh(ctx, *cred); err == nil {
-		a.replace(*cred, next)
+	if next, err := a.refresh(ctx, cred); err == nil {
+		a.replace(cred, next)
+		a.noteRefreshed(next)
 	}
 }
 
-func (a *Accounts) refreshable(cred *Credential) bool {
+// accountKey 返回账号的唯一标识；无 AccountID 的渠道退化为访问令牌。
+func (a *Accounts) accountKey(cred Credential) string {
+	if cred.AccountID != "" {
+		return cred.AccountID
+	}
+	return cred.AccessToken
+}
+
+// cooledDownLocked 报告该账号是否处于续期冷却窗口内；调用方须持锁。
+func (a *Accounts) cooledDownLocked(cred Credential) bool {
+	ts, ok := a.lastRefresh[a.accountKey(cred)]
+	return ok && time.Since(ts) < refreshCooldown
+}
+
+// noteRefreshed 记录账号最近一次成功续期的时间。
+func (a *Accounts) noteRefreshed(cred Credential) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.lastRefresh[a.accountKey(cred)] = time.Now()
+}
+
+func (a *Accounts) refreshable(cred Credential) bool {
 	return cred.RefreshToken != ""
 }
 
-func (a *Accounts) needsRefresh(cred *Credential) bool {
+func (a *Accounts) needsRefresh(cred Credential) bool {
 	return cred.Expired(time.Now().Add(refreshLead))
 }
 
-// currentLocked 返回当前选中的凭据；调用方须持有锁。
-func (a *Accounts) currentLocked() *Credential {
+// currentLocked 返回当前选中凭据的值拷贝；调用方须持有读锁或写锁。
+// 拷贝是为了让解锁后使用凭据不再与其他写方（replace/reload）竞争。
+func (a *Accounts) currentLocked() (Credential, bool) {
 	if len(a.creds) == 0 {
-		return nil
+		return Credential{}, false
 	}
-	if a.index < 0 || a.index >= len(a.creds) {
-		a.index = 0
+	index := a.index
+	if index < 0 || index >= len(a.creds) {
+		index = 0
 	}
-	return &a.creds[a.index]
+	return a.creds[index], true
 }
 
 // advance 切到下一个账号（多账号轮换）。
@@ -245,6 +292,7 @@ func (a *Accounts) RemoveAll() error {
 	a.mu.Lock()
 	a.creds = nil
 	a.index = 0
+	a.lastRefresh = make(map[string]time.Time)
 	a.mu.Unlock()
 	return nil
 }
