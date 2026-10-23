@@ -39,6 +39,7 @@ type Config struct {
 	ModelHealthTTLSeconds       int
 	ModelHealthIntervalSeconds  int
 	ModelHealthProbeAnonymous   bool
+	StatsRetentionDays          int // daily_stats 保留天数（独立于 request_logs）
 	Archive                     archive.Config
 	Memory                      memory.Config
 	Assistant                   assistant.Config
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 		RateLimitInitialSeconds:     getEnvInt("RATE_LIMIT_INITIAL_SECONDS", 30),
 		RateLimitMaxSeconds:         getEnvInt("RATE_LIMIT_MAX_SECONDS", 300),
 		ModelHealthTTLSeconds:       getEnvInt("MODEL_HEALTH_TTL_SECONDS", 900),
+		StatsRetentionDays:          getEnvInt("STATS_RETENTION_DAYS", 365),
 		ModelHealthIntervalSeconds:  getEnvInt("MODEL_HEALTH_INTERVAL_SECONDS", 0),
 		ModelHealthProbeAnonymous:   getEnvBool("MODEL_HEALTH_PROBE_ANONYMOUS", false),
 		Archive:                     loadArchiveConfig(),

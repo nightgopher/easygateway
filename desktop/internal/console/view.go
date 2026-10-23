@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -626,6 +627,66 @@ func (a *App) overviewView(c *ui.Context) {
 		ui.Row(c).Gap(12).Padding(12, 16).Radius(10).Background(theme.Accent.Alpha(.08)).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "渠道凭据提醒："+strings.Join(parts, "，")+"。").TextColor(theme.Accent).Grow(1)
 			ui.Button(c, "去处理").OnClick(func() { a.navigate("channels") })
+		})
+	}
+
+	// 用量趋势：数据来自网关持久化的按天聚合（/stats/history），跨重启可查。
+	// 旧版网关无此端点时拉取失败，statsHistory 为空即整卡隐藏。
+	if len(a.statsHistory.Days) > 0 {
+		card(c, func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "用量趋势").FontSize(16).Bold()
+				muted(c, a.statsHistory.From+" ~ "+a.statsHistory.To)
+				ui.Spacer(c)
+				for _, opt := range []struct {
+					label string
+					days  int
+				}{{"近 7 天", 7}, {"近 30 天", 30}} {
+					if a.statsDays == opt.days {
+						ui.PrimaryButton(c, opt.label).Disabled(a.busy != "")
+					} else {
+						ui.Button(c, opt.label).Disabled(a.busy != "").OnClick(func() { a.statsDays = opt.days; a.reload() })
+					}
+				}
+			})
+			maxReq := 1
+			for _, day := range a.statsHistory.Days {
+				if day.Requests > maxReq {
+					maxReq = day.Requests
+				}
+			}
+			for _, day := range a.statsHistory.Days {
+				d := day
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					if len(d.Date) >= 10 {
+						muted(c, d.Date[5:]) // YYYY-MM-DD -> MM-DD
+					}
+					ui.Meter(c, float64(d.Requests), 0, float64(maxReq), nil).Label(shortNumber(int64(d.Requests)) + " 次请求").Grow(1).MinWidth(0)
+					ui.Text(c, shortNumber(d.TotalTokens)+" tok").FontSize(12).TextColor(theme.TextMuted)
+					if d.Errors > 0 {
+						ui.Text(c, fmt.Sprintf("%d 错", d.Errors)).FontSize(12).TextColor(theme.Danger)
+					}
+				})
+			}
+			if len(a.statsHistory.Models) > 0 {
+				ui.Divider(c)
+				ui.Row(c).Gap(10).Children(func() {
+					ui.Text(c, "模型用量").FontSize(13).Bold()
+					ui.Spacer(c)
+				})
+				for i, m := range a.statsHistory.Models {
+					if i >= 5 {
+						break
+					}
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, m.Model).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+						if m.Provider != "" {
+							muted(c, m.Provider)
+						}
+						ui.Text(c, shortNumber(m.TotalTokens)+" tok · "+strconv.Itoa(m.Requests)+" 次").FontSize(12).TextColor(theme.TextMuted)
+					})
+				}
+			}
 		})
 	}
 

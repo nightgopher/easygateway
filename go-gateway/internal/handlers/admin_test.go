@@ -22,7 +22,7 @@ func TestAdminProviderControlsExposeAndUpdateRuntimeState(t *testing.T) {
 	router.RegisterProvider("first", &adminTestProvider{name: "first"})
 	router.RegisterProvider("second", &adminTestProvider{name: "second"})
 	router.RegisterChain("coding", []string{"first", "second"})
-	handler := NewAdminHandler(router, metrics.NewCollector(), logger)
+	handler := NewAdminHandler(router, metrics.NewCollector(), logger, nil)
 
 	engine := gin.New()
 	engine.GET("/admin/providers", handler.HandleProviders)
@@ -86,7 +86,7 @@ func TestAdminHealthDoesNotTreatUnprobedProvidersAsDegraded(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 	router := provider.NewRouter(logger)
 	router.RegisterProvider("unprobed", &adminTestProvider{name: "unprobed"})
-	handler := NewAdminHandler(router, metrics.NewCollector(), logger)
+	handler := NewAdminHandler(router, metrics.NewCollector(), logger, nil)
 
 	engine := gin.New()
 	engine.GET("/admin/health", handler.HandleHealth)
