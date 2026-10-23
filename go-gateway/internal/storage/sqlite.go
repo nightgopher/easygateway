@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -104,7 +105,7 @@ func initSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS daily_stats (
 		date TEXT NOT NULL,
 		model TEXT NOT NULL,
-		provider TEXT DEFAULT '',
+		provider TEXT NOT NULL DEFAULT '',
 		requests INTEGER DEFAULT 0,
 		successes INTEGER DEFAULT 0,
 		errors INTEGER DEFAULT 0,
@@ -114,7 +115,7 @@ func initSchema(db *sql.DB) error {
 		cache_creation_input_tokens INTEGER DEFAULT 0,
 		cache_input_tokens INTEGER DEFAULT 0,
 		cache_usage_requests INTEGER DEFAULT 0,
-		PRIMARY KEY (date, model)
+		PRIMARY KEY (date, model, provider)
 	);
 	`
 	if _, err := db.Exec(schema); err != nil {
@@ -145,7 +146,56 @@ func initSchema(db *sql.DB) error {
 		}
 	}
 	_, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_logs_request_id ON request_logs(request_id)")
-	return err
+	if err != nil {
+		return err
+	}
+	return migrateDailyStatsPrimaryKey(db)
+}
+
+// migrateDailyStatsPrimaryKey 把历史库的 daily_stats 主键从 (date, model)
+// 重建为 (date, model, provider)。旧主键下一个模型一天只记首个写入的渠道，
+// fallback 换渠道后维度归属不准，渠道级统计无法做。行数据保持不变，一次迁移。
+func migrateDailyStatsPrimaryKey(db *sql.DB) error {
+	var createSQL string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'daily_stats'`).Scan(&createSQL)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(createSQL, "PRIMARY KEY (date, model, provider)") {
+		return nil // 已是新结构
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmts := []string{
+		`CREATE TABLE daily_stats_v2 (
+			date TEXT NOT NULL,
+			model TEXT NOT NULL,
+			provider TEXT NOT NULL DEFAULT '',
+			requests INTEGER DEFAULT 0,
+			successes INTEGER DEFAULT 0,
+			errors INTEGER DEFAULT 0,
+			total_tokens INTEGER DEFAULT 0,
+			total_latency_ms REAL DEFAULT 0,
+			cache_read_input_tokens INTEGER DEFAULT 0,
+			cache_creation_input_tokens INTEGER DEFAULT 0,
+			cache_input_tokens INTEGER DEFAULT 0,
+			cache_usage_requests INTEGER DEFAULT 0,
+			PRIMARY KEY (date, model, provider)
+		)`,
+		`INSERT OR IGNORE INTO daily_stats_v2 (date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests)
+		 SELECT date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests FROM daily_stats`,
+		`DROP TABLE daily_stats`,
+		`ALTER TABLE daily_stats_v2 RENAME TO daily_stats`,
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate daily_stats primary key: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 func ensureColumn(db *sql.DB, table, column, definition string) error {
@@ -217,7 +267,7 @@ func (s *SQLiteStore) SaveRecordContext(ctx context.Context, r metrics.RequestRe
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO daily_stats (date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests)
 		VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(date, model) DO UPDATE SET
+		ON CONFLICT(date, model, provider) DO UPDATE SET
 			requests = requests + 1,
 			successes = successes + ?,
 			errors = errors + ?,
@@ -267,15 +317,17 @@ func (s *SQLiteStore) GetRecentLogs(limit int) ([]metrics.RequestRecord, error) 
 	return records, nil
 }
 
-// GetDailyStats 获取指定日期的统计
+// GetDailyStats 获取指定日期按模型聚合的统计（供重启恢复今日聚合用）。
+// 新主键下同一模型可能有多行（不同渠道），这里在 SQL 层按模型合并。
 func (s *SQLiteStore) GetDailyStats(date string) ([]metrics.ModelStats, error) {
 	rows, err := s.db.Query(`
-		SELECT model, provider, requests, successes, errors, total_tokens,
-			cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests,
-			CASE WHEN requests > 0 THEN total_latency_ms / requests ELSE 0 END as avg_latency
+		SELECT model, MAX(provider), SUM(requests), SUM(successes), SUM(errors), SUM(total_tokens),
+			SUM(cache_read_input_tokens), SUM(cache_creation_input_tokens), SUM(cache_input_tokens), SUM(cache_usage_requests),
+			CASE WHEN SUM(requests) > 0 THEN SUM(total_latency_ms) / SUM(requests) ELSE 0 END as avg_latency
 		FROM daily_stats
 		WHERE date = ?
-		ORDER BY requests DESC
+		GROUP BY model
+		ORDER BY SUM(requests) DESC
 	`, date)
 	if err != nil {
 		return nil, err
@@ -293,6 +345,32 @@ func (s *SQLiteStore) GetDailyStats(date string) ([]metrics.ModelStats, error) {
 	return stats, nil
 }
 
+// GetDailyStatRows 获取 [from, to]（闭区间，YYYY-MM-DD）的按天 × 模型 × 渠道
+// 聚合行，供历史统计聚合。
+func (s *SQLiteStore) GetDailyStatRows(from, to string) ([]metrics.DailyStatRow, error) {
+	rows, err := s.db.Query(`
+		SELECT date, model, provider, requests, successes, errors, total_tokens, total_latency_ms,
+			cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests
+		FROM daily_stats
+		WHERE date >= ? AND date <= ?
+		ORDER BY date, model
+	`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []metrics.DailyStatRow
+	for rows.Next() {
+		var r metrics.DailyStatRow
+		if err := rows.Scan(&r.Date, &r.Model, &r.Provider, &r.Requests, &r.Successes, &r.Errors, &r.TotalTokens, &r.TotalLatencyMS, &r.CacheReadInputTokens, &r.CacheCreationInputTokens, &r.CacheInputTokens, &r.CacheUsageRequests); err != nil {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // GetTotalRequests 获取今日总请求数
 func (s *SQLiteStore) GetTotalRequests(date string) (int, error) {
 	var total int
@@ -300,14 +378,15 @@ func (s *SQLiteStore) GetTotalRequests(date string) (int, error) {
 	return total, err
 }
 
-// Cleanup 清理旧数据（保留最近 N 天）。DELETE 按批执行，避免单条长写事务
-// 在单连接下阻塞其他写入方过久。
-func (s *SQLiteStore) Cleanup(days int) error {
-	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+// Cleanup 清理旧数据：request_logs 保留 logDays 天，daily_stats 保留
+// statsDays 天（按天聚合行小而价值随时间增长，保留期应远长于原始日志）。
+// DELETE 按批执行，避免单条长写事务在单连接下阻塞其他写入方过久。
+func (s *SQLiteStore) Cleanup(logDays, statsDays int) error {
 	const batchSize = 500
 	var totalLogs, totalStats int64
+	logCutoff := time.Now().AddDate(0, 0, -logDays).Format("2006-01-02")
 	for {
-		result, err := s.db.Exec(`DELETE FROM request_logs WHERE rowid IN (SELECT rowid FROM request_logs WHERE timestamp < ? LIMIT ?)`, cutoff, batchSize)
+		result, err := s.db.Exec(`DELETE FROM request_logs WHERE rowid IN (SELECT rowid FROM request_logs WHERE timestamp < ? LIMIT ?)`, logCutoff, batchSize)
 		if err != nil {
 			return err
 		}
@@ -321,8 +400,9 @@ func (s *SQLiteStore) Cleanup(days int) error {
 		s.logger.Printf("Cleaned up %d old log records", totalLogs)
 	}
 
+	statsCutoff := time.Now().AddDate(0, 0, -statsDays).Format("2006-01-02")
 	for {
-		result, err := s.db.Exec(`DELETE FROM daily_stats WHERE rowid IN (SELECT rowid FROM daily_stats WHERE date < ? LIMIT ?)`, cutoff, batchSize)
+		result, err := s.db.Exec(`DELETE FROM daily_stats WHERE rowid IN (SELECT rowid FROM daily_stats WHERE date < ? LIMIT ?)`, statsCutoff, batchSize)
 		if err != nil {
 			return err
 		}

@@ -227,6 +227,12 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 
 `/admin/stats`、`/admin/dashboard`、`/admin/models` 和 `/admin/logs` 会返回聚合指标或请求日志。缓存统计包含 `cache_read_input_tokens`、`cache_creation_input_tokens`、`cache_input_tokens`、`cache_usage_requests` 和 `cache_hit_rate`；命中率按缓存读取 token ÷ 已报告的总输入 token 加权计算。上游没有返回缓存 usage 的请求不计入命中率样本，数据不足时 `cache_hit_rate` 为 `null`。
 
+`/admin/stats` 与 `/admin/dashboard` 只覆盖「今日」；历史趋势用 `GET /admin/stats/history`：
+
+- `?days=30`（默认 7，上限 400）或 `?from=YYYY-MM-DD&to=YYYY-MM-DD`（闭区间，跨度上限 400 天）；
+- 返回 `days`（按天序列，缺失日期补零，可直接画图）、`models`（按请求量排序，`provider` 为该模型用量最大的渠道）与 `providers` 排行；
+- 数据来自 SQLite `daily_stats` 按天聚合表，跨重启可查；该表独立于请求日志保留（默认 365 天，`STATS_RETENTION_DAYS` 可调），请求日志仍按 30 天清理。
+
 ### 对话归档与增量导出
 
 默认情况下网关只记录轻量指标（状态码、token、延迟），不存任何请求/响应正文。开启归档后会额外保存脱敏后的完整对话，用于知识库增量同步。

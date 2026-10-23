@@ -93,7 +93,7 @@ func main() {
 		}
 
 		// 启动后台清理任务（每天清理 30 天前的指标数据 + 归档保留期外的对话）
-		go startCleanupTask(shutdownSignals, store, cfg.Archive, logger)
+		go startCleanupTask(shutdownSignals, store, cfg.Archive, cfg.StatsRetentionDays, logger)
 	}
 
 	// 构建归档器（即便 ARCHIVE_ENABLED=false 也是安全的 no-op）
@@ -184,7 +184,7 @@ func main() {
 	modelHandler := handlers.NewModelHandler(router, logger)
 	passthroughHandler := handlers.NewPassthroughHandler(router, logger)
 	healthHandler := handlers.NewHealthHandler(router, logger)
-	adminHandler := handlers.NewAdminHandler(router, collector, logger)
+	adminHandler := handlers.NewAdminHandler(router, collector, logger, sqliteStore)
 	configAdminHandler := handlers.NewConfigAdminHandler(reloader)
 	piConfigHandler := handlers.NewPiConfigHandler(defaultGatewayHome(), defaultPiHome(), logger, router)
 	clientConfigHandler := handlers.NewClientConfigHandler(defaultGatewayHome(), defaultZCodeHome(), defaultDshHome(), router, logger)
@@ -292,6 +292,7 @@ func main() {
 		admin.POST("/ccswitch/remote-scan", ccswitchHandler.HandleRemoteScan)
 		admin.POST("/ccswitch/remote-import", ccswitchHandler.HandleRemoteImport)
 		admin.GET("/stats", adminHandler.HandleStats)
+		admin.GET("/stats/history", adminHandler.HandleStatsHistory)
 		admin.GET("/archives", archiveHandler.HandleList)
 		admin.GET("/archives/export", archiveHandler.HandleExport)
 		admin.DELETE("/archives", archiveHandler.HandleDeleteBefore)
@@ -796,9 +797,9 @@ func hasProvider(names []string, wanted string) bool {
 }
 
 // startCleanupTask 启动后台清理任务
-func startCleanupTask(ctx context.Context, store *storage.SQLiteStore, archiveCfg archive.Config, logger *log.Logger) {
+func startCleanupTask(ctx context.Context, store *storage.SQLiteStore, archiveCfg archive.Config, statsRetentionDays int, logger *log.Logger) {
 	// 首次启动时清理
-	if err := store.Cleanup(30); err != nil {
+	if err := store.Cleanup(30, statsRetentionDays); err != nil {
 		logger.Printf("Cleanup error: %v", err)
 	}
 	if archiveCfg.Enabled && archiveCfg.RetentionDays > 0 {
@@ -821,7 +822,7 @@ func startCleanupTask(ctx context.Context, store *storage.SQLiteStore, archiveCf
 		case <-timer.C:
 		}
 
-		if err := store.Cleanup(30); err != nil {
+		if err := store.Cleanup(30, statsRetentionDays); err != nil {
 			logger.Printf("Cleanup error: %v", err)
 		}
 		if archiveCfg.Enabled && archiveCfg.RetentionDays > 0 {

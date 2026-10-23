@@ -12,19 +12,26 @@ import (
 	"github.com/weijian/go-llm-gateway/internal/provider"
 )
 
+// DailyStatsSource 读取持久化的按天聚合行，历史统计端点的数据来源。
+type DailyStatsSource interface {
+	GetDailyStatRows(from, to string) ([]metrics.DailyStatRow, error)
+}
+
 // AdminHandler 处理管理面板 API
 type AdminHandler struct {
-	router    *provider.Router
-	collector *metrics.Collector
-	logger    *log.Logger
+	router     *provider.Router
+	collector  *metrics.Collector
+	logger     *log.Logger
+	dailyStats DailyStatsSource // 可为 nil：无持久化时历史端点返回 503
 }
 
 // NewAdminHandler 创建管理面板 handler
-func NewAdminHandler(router *provider.Router, collector *metrics.Collector, logger *log.Logger) *AdminHandler {
+func NewAdminHandler(router *provider.Router, collector *metrics.Collector, logger *log.Logger, dailyStats DailyStatsSource) *AdminHandler {
 	return &AdminHandler{
-		router:    router,
-		collector: collector,
-		logger:    logger,
+		router:     router,
+		collector:  collector,
+		logger:     logger,
+		dailyStats: dailyStats,
 	}
 }
 
@@ -528,4 +535,76 @@ func (h *AdminHandler) writeControlError(c *gin.Context, err error) {
 		status = http.StatusNotFound
 	}
 	c.JSON(status, gin.H{"error": err.Error()})
+}
+
+// statsHistoryMaxDays 限制单次查询的区间跨度，防止一次拉取全年数据
+// 生成过大响应；需要更长趋势时可分段请求。
+const statsHistoryMaxDays = 400
+
+// HandleStatsHistory GET /admin/stats/history?days=30 或 ?from=2026-09-01&to=2026-09-30
+// 返回区间内按天序列与模型/渠道排行，数据来自持久化的 daily_stats，
+// 跨重启可查。days 缺省 7。
+func (h *AdminHandler) HandleStatsHistory(c *gin.Context) {
+	if h.dailyStats == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "history stats unavailable: persistence disabled"})
+		return
+	}
+
+	now := time.Now()
+	from, to := now.AddDate(0, 0, -6).Format("2006-01-02"), now.Format("2006-01-02")
+	if c.Query("from") != "" || c.Query("to") != "" {
+		var err error
+		from, to, err = parseStatsRange(c.Query("from"), c.Query("to"), now)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else if raw := c.Query("days"); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err != nil || days <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "days must be a positive integer"})
+			return
+		}
+		if days > statsHistoryMaxDays {
+			days = statsHistoryMaxDays
+		}
+		from = now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	}
+
+	rows, err := h.dailyStats.GetDailyStatRows(from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, metrics.AggregateHistory(rows, from, to))
+}
+
+// parseStatsRange 校验并规范化显式区间：两端均为 YYYY-MM-DD，from <= to，
+// 跨度不超过 statsHistoryMaxDays；缺省端以 today 补齐。
+func parseStatsRange(fromRaw, toRaw string, now time.Time) (string, string, error) {
+	today := now.Format("2006-01-02")
+	if fromRaw == "" {
+		fromRaw = today
+	}
+	if toRaw == "" {
+		toRaw = today
+	}
+	from, err := time.Parse("2006-01-02", fromRaw)
+	if err != nil {
+		return "", "", errors.New("from must be YYYY-MM-DD")
+	}
+	to, err := time.Parse("2006-01-02", toRaw)
+	if err != nil {
+		return "", "", errors.New("to must be YYYY-MM-DD")
+	}
+	if to.Before(from) {
+		return "", "", errors.New("from must not be after to")
+	}
+	if to.Sub(from) > statsHistoryMaxDays*24*time.Hour {
+		return "", "", errors.New("range too large (max 400 days)")
+	}
+	if to.After(now) {
+		to = now
+	}
+	return from.Format("2006-01-02"), to.Format("2006-01-02"), nil
 }
