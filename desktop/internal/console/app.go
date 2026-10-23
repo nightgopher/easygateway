@@ -26,6 +26,8 @@ type App struct {
 	busy, notice, problem                                                 string
 	loaded                                                                bool
 	dashboard                                                             Dashboard
+	statsHistory                                                          StatsHistory
+	statsDays                                                             int
 	providers                                                             []Provider
 	channels                                                              []AccountChannel
 	channelLogin                                                          *ChannelLogin
@@ -114,7 +116,7 @@ func New(store *connection.Store) *App {
 		logSplitHeight: 380,
 		memoryScope:    "global", memoryFilter: "all", skillSelection: map[string]bool{}, skillTag: skillsTagAll,
 		modelCategory: modelCategoryAll, marketSection: marketSectionAll,
-		skillExpanded: map[string]bool{}, skillSource: skillSourceRepo, marketSort: "推荐", marketPage: 1,
+		skillExpanded: map[string]bool{}, skillSource: skillSourceRepo, marketSort: "推荐", marketPage: 1, statsDays: 7,
 		marketExpanded: map[string]bool{}, configs: map[string]ClientConfig{}, configSelection: map[string]map[string]bool{}}
 	if a.profiles.ActiveID != "" {
 		a.page = "overview"
@@ -249,7 +251,7 @@ func (a *App) launch(label string, timeout time.Duration, task func(context.Cont
 	}()
 }
 func (a *App) reload() {
-	page, project, filter, limit := a.page, a.loadedProject, a.memoryFilter, a.logLimit
+	page, project, filter, limit, statsDays := a.page, a.loadedProject, a.memoryFilter, a.logLimit, a.statsDays
 	source, marketQuery, marketSort, marketSection, marketPage := a.skillSource, a.marketQuery, a.marketSort, a.marketSection, a.marketPage
 	a.work("正在读取", 35*time.Second, func(ctx context.Context, c *connection.Client) (func(), error) {
 		switch page {
@@ -261,6 +263,9 @@ func (a *App) reload() {
 			}
 			// 渠道清单用于过期提醒；拉取失败不影响概览指标。
 			channelsErr := c.JSON(ctx, "GET", "/channels", nil, &channels)
+			// 历史趋势独立容错：旧版网关没有 /stats/history 时概览其余部分照常。
+			var history StatsHistory
+			historyErr := c.JSON(ctx, "GET", fmt.Sprintf("/stats/history?days=%d", statsDays), nil, &history)
 			// 迁移引导：网关刚起步（provider 很少）时看看 cc-switch 能不能
 			// 带来存量配置——先问网关主机，再退回本机检测（远程网关场景）。
 			hint := CCSwitchHint{}
@@ -276,6 +281,11 @@ func (a *App) reload() {
 				// 后台直接写渠道状态会与原生渲染竞态，并绕过主机切换的序列校验。
 				if channelsErr == nil {
 					a.channels = channels.Channels
+				}
+				if historyErr == nil {
+					a.statsHistory = history
+				} else {
+					a.statsHistory = StatsHistory{}
 				}
 				a.dashboard = d
 				a.ccHint = hint

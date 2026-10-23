@@ -51,6 +51,40 @@ type Dashboard struct {
 	Providers []Provider `json:"providers"`
 	Models    []Model    `json:"models"`
 }
+
+// StatsHistory 对应网关 GET /admin/stats/history：按天序列 + 模型/渠道排行。
+type StatsHistory struct {
+	From      string            `json:"from"`
+	To        string            `json:"to"`
+	Days      []HistoryDay      `json:"days"`
+	Models    []HistoryModel    `json:"models"`
+	Providers []HistoryProvider `json:"providers"`
+}
+type HistoryDay struct {
+	Date         string   `json:"date"`
+	Requests     int      `json:"requests"`
+	Successes    int      `json:"successes"`
+	Errors       int      `json:"errors"`
+	TotalTokens  int64    `json:"total_tokens"`
+	AvgLatencyMS float64  `json:"avg_latency_ms"`
+	SuccessRate  float64  `json:"success_rate"`
+	CacheHitRate *float64 `json:"cache_hit_rate"`
+}
+type HistoryModel struct {
+	Model        string  `json:"model"`
+	Provider     string  `json:"provider"`
+	Requests     int     `json:"requests"`
+	Errors       int     `json:"errors"`
+	TotalTokens  int64   `json:"total_tokens"`
+	AvgLatencyMS float64 `json:"avg_latency_ms"`
+}
+type HistoryProvider struct {
+	Provider     string  `json:"provider"`
+	Requests     int     `json:"requests"`
+	Errors       int     `json:"errors"`
+	TotalTokens  int64   `json:"total_tokens"`
+	AvgLatencyMS float64 `json:"avg_latency_ms"`
+}
 type Route struct {
 	Model     string `json:"model"`
 	Providers []struct {
