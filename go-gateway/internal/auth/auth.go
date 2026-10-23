@@ -1,11 +1,20 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	authFailureWindow = time.Minute
+	authFailureMax    = 20
 )
 
 // extractToken 从请求中提取 token
@@ -24,6 +33,58 @@ func extractToken(c *gin.Context) string {
 	return token
 }
 
+// secureTokenEqual 常量时间比较两个 token。先哈希再比较，
+// 避免明文按字节短路比较的计时侧信道与长度泄露。
+func secureTokenEqual(a, b string) bool {
+	sumA := sha256.Sum256([]byte(a))
+	sumB := sha256.Sum256([]byte(b))
+	return subtle.ConstantTimeCompare(sumA[:], sumB[:]) == 1
+}
+
+// failureLimiter 按来源 IP 统计认证失败，超限后临时拒绝，
+// 阻止对 master/admin token 的在线暴力猜解。
+type failureLimiter struct {
+	mu      sync.Mutex
+	window  time.Duration
+	maxFail int
+	fails   map[string][]time.Time
+}
+
+func newFailureLimiter(window time.Duration, maxFail int) *failureLimiter {
+	return &failureLimiter{window: window, maxFail: maxFail, fails: make(map[string][]time.Time)}
+}
+
+// allow 报告该 IP 在当前窗口内的失败次数是否仍低于上限。
+func (f *failureLimiter) allow(ip string, now time.Time) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.recentLocked(ip, now)) < f.maxFail
+}
+
+// recordFail 记录一次认证失败。
+func (f *failureLimiter) recordFail(ip string, now time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fails[ip] = append(f.recentLocked(ip, now), now)
+}
+
+// recentLocked 清理并返回窗口内的失败记录；调用方需持锁。
+func (f *failureLimiter) recentLocked(ip string, now time.Time) []time.Time {
+	cutoff := now.Add(-f.window)
+	recent := f.fails[ip][:0]
+	for _, ts := range f.fails[ip] {
+		if ts.After(cutoff) {
+			recent = append(recent, ts)
+		}
+	}
+	if len(recent) == 0 {
+		delete(f.fails, ip)
+	} else {
+		f.fails[ip] = recent
+	}
+	return recent
+}
+
 // BearerAuth 创建 Bearer token 认证中间件
 func BearerAuth(masterKey string, logger *log.Logger) gin.HandlerFunc {
 	return BearerAuthWithAdminToken(masterKey, "", logger)
@@ -34,6 +95,12 @@ func BearerAuth(masterKey string, logger *log.Logger) gin.HandlerFunc {
 // admin group still runs AdminAuth afterwards, so this only changes the
 // outer gate and does not weaken non-admin endpoints.
 func BearerAuthWithAdminToken(masterKey string, adminToken string, logger *log.Logger) gin.HandlerFunc {
+	failures := newFailureLimiter(authFailureWindow, authFailureMax)
+	tooMany := func(c *gin.Context) {
+		logger.Printf("Too many failed auth attempts from %s", c.ClientIP())
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many failed auth attempts, retry later"})
+		c.Abort()
+	}
 	return func(c *gin.Context) {
 		// Liveness/readiness probes and CORS preflight do not need credentials.
 		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/readyz" || c.Request.Method == "OPTIONS" {
@@ -41,21 +108,29 @@ func BearerAuthWithAdminToken(masterKey string, adminToken string, logger *log.L
 			return
 		}
 
+		ip := c.ClientIP()
+		now := time.Now()
+		if !failures.allow(ip, now) {
+			tooMany(c)
+			return
+		}
+
 		token := extractToken(c)
-		if adminToken != "" && isAdminPath(c.Request.URL.Path) && token == adminToken {
+		if adminToken != "" && isAdminPath(c.Request.URL.Path) && secureTokenEqual(token, adminToken) {
 			c.Next()
 			return
 		}
 
 		if token == "" {
-			logger.Printf("Missing Authorization header from %s", c.ClientIP())
+			logger.Printf("Missing Authorization header from %s", ip)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
 			c.Abort()
 			return
 		}
 
-		if token != masterKey {
-			logger.Printf("Invalid token from %s", c.ClientIP())
+		if !secureTokenEqual(token, masterKey) {
+			failures.recordFail(ip, now)
+			logger.Printf("Invalid token from %s", ip)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -73,11 +148,21 @@ func isAdminPath(path string) bool {
 // 如果设置了 adminToken，则管理端点需要 adminToken
 // 如果未设置 adminToken，则管理端点使用 masterKey
 func AdminAuth(masterKey string, adminToken string, logger *log.Logger) gin.HandlerFunc {
+	failures := newFailureLimiter(authFailureWindow, authFailureMax)
 	return func(c *gin.Context) {
+		ip := c.ClientIP()
+		now := time.Now()
+		if !failures.allow(ip, now) {
+			logger.Printf("Too many failed admin auth attempts from %s", ip)
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many failed auth attempts, retry later"})
+			c.Abort()
+			return
+		}
+
 		token := extractToken(c)
 
 		if token == "" {
-			logger.Printf("Missing Authorization header for admin endpoint from %s", c.ClientIP())
+			logger.Printf("Missing Authorization header for admin endpoint from %s", ip)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
 			c.Abort()
 			return
@@ -85,24 +170,25 @@ func AdminAuth(masterKey string, adminToken string, logger *log.Logger) gin.Hand
 
 		// 如果设置了 adminToken，优先验证 adminToken
 		if adminToken != "" {
-			if token == adminToken {
+			if secureTokenEqual(token, adminToken) {
 				c.Next()
 				return
 			}
 			// adminToken 不匹配，也允许 masterKey
-			if token == masterKey {
+			if secureTokenEqual(token, masterKey) {
 				c.Next()
 				return
 			}
 		} else {
 			// 未设置 adminToken，使用 masterKey
-			if token == masterKey {
+			if secureTokenEqual(token, masterKey) {
 				c.Next()
 				return
 			}
 		}
 
-		logger.Printf("Invalid admin token from %s", c.ClientIP())
+		failures.recordFail(ip, now)
+		logger.Printf("Invalid admin token from %s", ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid admin token"})
 		c.Abort()
 	}

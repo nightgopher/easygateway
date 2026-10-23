@@ -27,9 +27,13 @@ type CopilotProvider struct {
 }
 
 func NewCopilotProvider(config *Config, githubToken string) *CopilotProvider {
+	// 不用 http.Client.Timeout：它把整条 SSE 流计入总时长，长生成会在 120s 被
+	// 砍断。改为 ResponseHeaderTimeout 限制首字节，流式停滞由看门狗中止
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = 120 * time.Second
 	p := &CopilotProvider{
 		config:      config,
-		client:      &http.Client{Timeout: 120 * time.Second},
+		client:      &http.Client{Transport: transport},
 		token:       config.APIKey,
 		githubToken: githubToken,
 	}

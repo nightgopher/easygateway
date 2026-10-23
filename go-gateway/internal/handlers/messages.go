@@ -70,7 +70,7 @@ func (h *MessageHandler) handleNonStream(c *gin.Context, req *provider.Request, 
 	resp, finalProvider, attempts, err := h.router.ForwardWithDetails(c.Request.Context(), req.Model, req)
 	setForwardMetadata(c, finalProvider, attempts, err)
 	if err != nil {
-		h.logger.Printf("Forward failed: %v", err)
+		h.logger.Printf("Forward failed: %s", provider.RedactedErrorText(err))
 		setProviderErrorHeaders(c, err)
 		// Archive the failed attempt: request body is known, response is the error.
 		if h.archiver != nil && h.archiver.Enabled() {
@@ -139,7 +139,7 @@ func (h *MessageHandler) handleStream(c *gin.Context, req *provider.Request, raw
 			recordProviderAttempt(c, p.Name(), started, err)
 			h.router.RecordProviderFailureFor(originalModel, p, err)
 			lastErr = err
-			h.logger.Printf("Stream provider %s failed: %v", p.Name(), err)
+			h.logger.Printf("Stream provider %s failed: %s", p.Name(), provider.RedactedErrorText(err))
 			if c.Writer.Written() {
 				_ = writeAnthropicStreamError(c.Writer, err)
 				streamOK = true // headers already sent → this is the terminal state
@@ -167,7 +167,7 @@ func (h *MessageHandler) handleStream(c *gin.Context, req *provider.Request, raw
 		// StatusInterrupted.
 		if !streamOK && sink.Len() == 0 && lastErr != nil {
 			// No stream bytes were emitted → archive as a failed attempt.
-			h.logger.Printf("All stream providers failed: %v", lastErr)
+			h.logger.Printf("All stream providers failed: %s", provider.RedactedErrorText(lastErr))
 			if !c.Writer.Written() {
 				setProviderErrorHeaders(c, lastErr)
 				c.JSON(routingErrorStatus(lastErr), gin.H{"error": lastErr.Error()})
@@ -189,7 +189,7 @@ func (h *MessageHandler) handleStream(c *gin.Context, req *provider.Request, raw
 		lastErr = &provider.NoAvailableProvidersError{Model: req.Model, Reason: "disabled, unavailable, or circuit open"}
 	}
 
-	h.logger.Printf("All stream providers failed: %v", lastErr)
+	h.logger.Printf("All stream providers failed: %s", provider.RedactedErrorText(lastErr))
 	if !c.Writer.Written() {
 		setProviderErrorHeaders(c, lastErr)
 		c.JSON(routingErrorStatus(lastErr), gin.H{"error": lastErr.Error()})

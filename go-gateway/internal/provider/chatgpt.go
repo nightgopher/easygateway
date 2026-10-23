@@ -242,10 +242,10 @@ func NewChatGPTProviderWithAuthPath(proxyURL, authPath string) *ChatGPTProvider 
 			transport.Proxy = http.ProxyURL(proxy)
 		}
 	}
-	p.client = &http.Client{
-		Transport: transport,
-		Timeout:   300 * time.Second, // Codex requests can run for a long time.
-	}
+	// 不用 http.Client.Timeout：它把整条 SSE 流计入总时长，长 Codex 生成会被
+	// 砍断。改为 ResponseHeaderTimeout 限制首字节，流式停滞由看门狗中止
+	transport.ResponseHeaderTimeout = 300 * time.Second
+	p.client = &http.Client{Transport: transport}
 
 	// Load credentials at startup so an unconfigured subscription does not
 	// appear as a usable model in /v1/models.

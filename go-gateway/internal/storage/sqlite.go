@@ -26,12 +26,17 @@ func NewSQLiteStore(dbPath string, logger *log.Logger) (*SQLiteStore, error) {
 		logger = log.New(io.Discard, "", 0)
 	}
 	// Metrics and conversation archives share one SQLite file but are written
-	// by independent goroutines. Configure a per-connection busy timeout so a
-	// short write collision waits instead of dropping a lightweight metric.
+	// by independent goroutines. A connection pool larger than 1 lets those
+	// writers race for the write lock; a long write (cleanup DELETE, large
+	// archive save) then exhausts busy_timeout and silently drops metric
+	// records. Converge on a single connection so writers serialize in Go
+	// instead of failing in SQLite; WAL keeps readers unaffected.
 	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout%3d5000")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	// 启用 WAL 模式提高并发性能
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
@@ -295,25 +300,40 @@ func (s *SQLiteStore) GetTotalRequests(date string) (int, error) {
 	return total, err
 }
 
-// Cleanup 清理旧数据（保留最近 N 天）
+// Cleanup 清理旧数据（保留最近 N 天）。DELETE 按批执行，避免单条长写事务
+// 在单连接下阻塞其他写入方过久。
 func (s *SQLiteStore) Cleanup(days int) error {
 	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
-	result, err := s.db.Exec(`DELETE FROM request_logs WHERE timestamp < ?`, cutoff)
-	if err != nil {
-		return err
+	const batchSize = 500
+	var totalLogs, totalStats int64
+	for {
+		result, err := s.db.Exec(`DELETE FROM request_logs WHERE rowid IN (SELECT rowid FROM request_logs WHERE timestamp < ? LIMIT ?)`, cutoff, batchSize)
+		if err != nil {
+			return err
+		}
+		n, _ := result.RowsAffected()
+		totalLogs += n
+		if n < batchSize {
+			break
+		}
 	}
-	n, _ := result.RowsAffected()
-	if n > 0 {
-		s.logger.Printf("Cleaned up %d old log records", n)
+	if totalLogs > 0 {
+		s.logger.Printf("Cleaned up %d old log records", totalLogs)
 	}
 
-	result, err = s.db.Exec(`DELETE FROM daily_stats WHERE date < ?`, cutoff)
-	if err != nil {
-		return err
+	for {
+		result, err := s.db.Exec(`DELETE FROM daily_stats WHERE rowid IN (SELECT rowid FROM daily_stats WHERE date < ? LIMIT ?)`, cutoff, batchSize)
+		if err != nil {
+			return err
+		}
+		n, _ := result.RowsAffected()
+		totalStats += n
+		if n < batchSize {
+			break
+		}
 	}
-	n, _ = result.RowsAffected()
-	if n > 0 {
-		s.logger.Printf("Cleaned up %d old daily stats", n)
+	if totalStats > 0 {
+		s.logger.Printf("Cleaned up %d old daily stats", totalStats)
 	}
 	return nil
 }

@@ -140,9 +140,13 @@ func NewDeepVProvider(config *Config, workDir string, boundModel string) *DeepVP
 	if timeout <= 0 {
 		timeout = 300 * time.Second
 	}
+	// 不用 http.Client.Timeout：它把整条流式 body 计入总时长，长生成会被砍断。
+	// 改为 ResponseHeaderTimeout 限制首字节，流式停滞由看门狗中止
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = timeout
 	return &DeepVProvider{
 		config:     config,
-		client:     &http.Client{Timeout: timeout},
+		client:     &http.Client{Transport: transport},
 		workDir:    workDir,
 		boundModel: boundModel,
 	}

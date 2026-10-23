@@ -98,7 +98,7 @@ func (h *PassthroughHandler) forward(c *gin.Context, path string) {
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		h.logger.Printf("passthrough %s model=%s upstream error: %v", path, model, err)
+		h.logger.Printf("passthrough %s model=%s upstream error: %s", path, model, provider.RedactedErrorText(err))
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": "upstream request failed: " + err.Error(), "type": "server_error"}})
 		return
 	}

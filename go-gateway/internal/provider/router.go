@@ -380,7 +380,7 @@ func (r *Router) ForwardWithDetails(ctx context.Context, modelName string, req *
 
 		if err != nil {
 			r.RecordProviderFailureFor(modelName, p, err)
-			r.logger.Printf("Provider %s failed: %v", p.Name(), err)
+			r.logger.Printf("Provider %s failed: %s", p.Name(), RedactedErrorText(err))
 			lastErr = err
 			attempt := requestmeta.ProviderAttempt{
 				Provider:  p.Name(),

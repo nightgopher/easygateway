@@ -354,7 +354,7 @@ func (h *responsesHandler) handleNonStream(c *gin.Context, req *responsesRequest
 	}
 	setForwardMetadata(c, finalProvider, append(providerAttempts(c), attempts...), err)
 	if err != nil {
-		h.logger.Printf("Responses forward failed: %v", err)
+		h.logger.Printf("Responses forward failed: %s", provider.RedactedErrorText(err))
 		setProviderErrorHeaders(c, err)
 		if h.archiver != nil && h.archiver.Enabled() {
 			// Sanitize the error message for BOTH response_body and error_reason
@@ -867,7 +867,7 @@ func (h *responsesHandler) tryChatGPTPassthrough(c *gin.Context, req *responsesR
 				h.router.RecordProviderFailureFor(req.Model, p, err)
 				h.router.MarkProviderAttempted(c.Request.Context(), req.Model, p)
 				c.Set("native_passthrough_error", err)
-				h.logger.Printf("[RESPONSES] ChatGPT passthrough failed: %v", err)
+				h.logger.Printf("[RESPONSES] ChatGPT passthrough failed: %s", provider.RedactedErrorText(err))
 				if !c.Writer.Written() && provider.ShouldFallback(err) {
 					continue
 				}
@@ -935,11 +935,15 @@ func (h *responsesHandler) tryChatGPTNonStreamPassthrough(c *gin.Context, req *r
 
 		started := time.Now()
 		var upstream bytes.Buffer
+		var attemptTiming provider.StreamTiming
 		err := h.router.RunNonStreamAttempt(c.Request.Context(), p.Name(), func(ctx context.Context) error {
-			return runGuardedStreamContext(c, ctx, h.router, providerReq, p, &upstream, func(attemptCtx context.Context, _ *provider.Request, w io.Writer) error {
+			var err error
+			attemptTiming, err = runGuardedStreamTimed(ctx, h.router, providerReq, p, &upstream, func(attemptCtx context.Context, _ *provider.Request, w io.Writer) error {
 				return chatgptPassthrough.ForwardRawResponsesStream(attemptCtx, json.RawMessage(rawBody), w)
 			})
+			return err
 		})
+		c.Set("attempt_stream_timing", attemptTiming)
 		if err == nil {
 			var responseBody []byte
 			var inputTokens, outputTokens int
@@ -967,7 +971,7 @@ func (h *responsesHandler) tryChatGPTNonStreamPassthrough(c *gin.Context, req *r
 		h.router.RecordProviderFailureFor(req.Model, p, err)
 		h.router.MarkProviderAttempted(c.Request.Context(), req.Model, p)
 		c.Set("native_passthrough_error", err)
-		h.logger.Printf("[RESPONSES] ChatGPT non-stream passthrough failed: %v", err)
+		h.logger.Printf("[RESPONSES] ChatGPT non-stream passthrough failed: %s", provider.RedactedErrorText(err))
 		if provider.ShouldFallback(err) {
 			continue
 		}
