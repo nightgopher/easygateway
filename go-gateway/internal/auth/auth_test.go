@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -108,5 +109,61 @@ func TestBearerAuthAllowsConfiguredAdminTokenOnAdminPaths(t *testing.T) {
 	e.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected admin token to be accepted, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSecureTokenEqual(t *testing.T) {
+	if !secureTokenEqual("same-token", "same-token") {
+		t.Error("identical tokens should compare equal")
+	}
+	if secureTokenEqual("test-key", "wrong-key") {
+		t.Error("different tokens should not compare equal")
+	}
+	if secureTokenEqual("", "x") || secureTokenEqual("x", "") {
+		t.Error("empty vs non-empty should not compare equal")
+	}
+}
+
+func TestBearerAuthRateLimitsFailures(t *testing.T) {
+	e := newTestRouter("test-key")
+	req := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/test", nil)
+		req.Header.Set("Authorization", "Bearer wrong-key")
+		w := httptest.NewRecorder()
+		e.ServeHTTP(w, req)
+		return w.Code
+	}
+	for i := 0; i < authFailureMax; i++ {
+		if code := req(); code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, code)
+		}
+	}
+	if code := req(); code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 after %d failures, got %d", authFailureMax, code)
+	}
+	// 有效 token 也应在拒绝窗口内被限流（防猜解优先）。
+	valid := httptest.NewRequest(http.MethodPost, "/test", nil)
+	valid.Header.Set("Authorization", "Bearer test-key")
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, valid)
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("valid token within blocked window should still be limited, got %d", w.Code)
+	}
+}
+
+func TestFailureLimiterWindowExpires(t *testing.T) {
+	f := newFailureLimiter(authFailureWindow, authFailureMax)
+	now := time.Now()
+	for i := 0; i < authFailureMax; i++ {
+		f.recordFail("1.2.3.4", now)
+	}
+	if f.allow("1.2.3.4", now) {
+		t.Error("limiter should block at the limit")
+	}
+	if !f.allow("1.2.3.4", now.Add(authFailureWindow+time.Second)) {
+		t.Error("limiter should unblock after the window expires")
+	}
+	if !f.allow("5.6.7.8", now) {
+		t.Error("other IPs must not be affected")
 	}
 }
