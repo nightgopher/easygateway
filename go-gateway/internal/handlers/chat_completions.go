@@ -255,7 +255,7 @@ func (h *openAIChatCompletionsHandler) Handle(c *gin.Context) {
 	resp, finalProvider, attempts, err := h.router.ForwardWithDetails(c.Request.Context(), providerReq.Model, providerReq)
 	setForwardMetadata(c, finalProvider, attempts, err)
 	if err != nil {
-		h.logger.Printf("Forward failed: %v", err)
+		h.logger.Printf("Forward failed: %s", provider.RedactedErrorText(err))
 		setProviderErrorHeaders(c, err)
 		if h.archiver != nil && h.archiver.Enabled() {
 			// Sanitize the error message for BOTH response_body and error_reason
@@ -319,7 +319,7 @@ func (h *openAIChatCompletionsHandler) handleStream(c *gin.Context, req *provide
 			recordProviderAttempt(c, p.Name(), started, err)
 			h.router.RecordProviderFailureFor(originalModel, p, err)
 			lastErr = err
-			h.logger.Printf("chat.completions stream provider %s failed: %v", p.Name(), err)
+			h.logger.Printf("chat.completions stream provider %s failed: %s", p.Name(), provider.RedactedErrorText(err))
 			if c.Writer.Written() {
 				_ = writeOpenAIStreamError(c.Writer, err)
 				streamOK = true
@@ -371,13 +371,17 @@ func (h *openAIChatCompletionsHandler) streamFromProvider(c *gin.Context, req *p
 	if sink != nil {
 		streamWriter = newTeeStreamWriter(streamWriterBase, sink)
 	}
+	// 流计时由后台 goroutine 经 errCh 的 happens-before 传回，再由请求 goroutine 写入。
+	var streamTiming provider.StreamTiming
 	errCh := make(chan error, 1)
 	go func() {
+		var err error
 		if sp, ok := p.(provider.StreamProvider); ok {
-			errCh <- runGuardedStreamContext(c, ctx, h.router, req, p, pw, sp.ForwardStream)
+			streamTiming, err = runGuardedStreamContext(ctx, h.router, req, p, pw, sp.ForwardStream)
 		} else {
-			errCh <- fmt.Errorf("provider %s does not support streaming", p.Name())
+			err = fmt.Errorf("provider %s does not support streaming", p.Name())
 		}
+		errCh <- err
 		_ = pw.Close()
 	}()
 
@@ -385,11 +389,14 @@ func (h *openAIChatCompletionsHandler) streamFromProvider(c *gin.Context, req *p
 		cancel()
 		_ = pr.Close()
 		<-errCh
+		c.Set("attempt_stream_timing", streamTiming)
 		return err
 	}
 	if err := <-errCh; err != nil {
+		c.Set("attempt_stream_timing", streamTiming)
 		return err
 	}
+	c.Set("attempt_stream_timing", streamTiming)
 	streamWriterBase.Commit()
 	return nil
 }

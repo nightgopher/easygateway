@@ -72,7 +72,7 @@ func (h *responsesHandler) handleStream(c *gin.Context, req *responsesRequest, r
 			recordProviderAttempt(c, p.Name(), started, err)
 			h.router.RecordProviderFailureFor(originalModel, p, err)
 			lastErr = err
-			h.logger.Printf("Responses stream provider %s failed: %v", p.Name(), err)
+			h.logger.Printf("Responses stream provider %s failed: %s", p.Name(), provider.RedactedErrorText(err))
 			if c.Writer.Written() {
 				_ = writeResponsesStreamError(c.Writer, err)
 				streamOK = true
@@ -132,17 +132,21 @@ func (h *responsesHandler) streamFromProvider(c *gin.Context, req *provider.Requ
 	if sink != nil {
 		streamWriter = newTeeStreamWriter(streamWriterBase, sink)
 	}
+	// 流计时由后台 goroutine 经 errCh 的 happens-before 传回，再由请求 goroutine 写入。
+	var streamTiming provider.StreamTiming
 	errCh := make(chan error, 1)
 
 	go func() {
 		defer pw.Close()
+		var err error
 		if sp, ok := p.(provider.StreamProvider); ok {
-			errCh <- runGuardedStreamContext(c, ctx, h.router, req, p, pw, sp.ForwardStream)
+			streamTiming, err = runGuardedStreamContext(ctx, h.router, req, p, pw, sp.ForwardStream)
 		} else {
-			errCh <- runGuardedStreamContext(c, ctx, h.router, req, p, pw, func(ctx context.Context, _ *provider.Request, w io.Writer) error {
+			streamTiming, err = runGuardedStreamContext(ctx, h.router, req, p, pw, func(ctx context.Context, _ *provider.Request, w io.Writer) error {
 				return h.forwardRawStream(ctx, req, p, w)
 			})
 		}
+		errCh <- err
 	}()
 
 	err := anthropicSSEToResponsesSSEWithUsage(pr, streamWriter, model, c)
@@ -151,7 +155,9 @@ func (h *responsesHandler) streamFromProvider(c *gin.Context, req *provider.Requ
 	}
 	_ = pr.Close()
 
-	if streamErr := <-errCh; streamErr != nil && err == nil {
+	streamErr := <-errCh
+	c.Set("attempt_stream_timing", streamTiming)
+	if streamErr != nil && err == nil {
 		return streamErr
 	}
 	if err != nil {
