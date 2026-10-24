@@ -41,7 +41,7 @@ Debian、Ubuntu 及其衍生发行版可以直接安装 Release 附带的 .deb �
 
 ```bash
 # 从最新 Release 下载并安装服务端（自动注册 systemd 服务并生成随机 Master Key）
-curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway-server_0.3.12-1_amd64.deb
+curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway-server_0.3.13-1_amd64.deb
 sudo dpkg -i easygateway-server.deb || sudo apt-get install -f
 ```
 
@@ -68,7 +68,7 @@ sudo dpkg --purge easygateway-server   # 卸载并清除全部数据
 桌面管理端从 v0.3.7 起提供 Linux 包（amd64 / arm64），安装后出现在应用菜单，命令行入口为 `easygateway-desktop`。桌面端只管理网关，不自带网关进程；运行需要 GTK3 与 WebKitGTK 4.1（包依赖已声明）：
 
 ```bash
-curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway_0.3.12_amd64.deb
+curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway_0.3.13_amd64.deb
 sudo dpkg -i easygateway-desktop.deb || sudo apt-get install -f
 ```
 
