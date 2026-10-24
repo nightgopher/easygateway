@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hwj123hwj/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
 )
 
 type ChannelAccount struct {

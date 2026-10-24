@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/hwj123hwj/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
 )
 
 type CORSConfig struct {
@@ -63,7 +63,7 @@ func (a *App) gatewaySettingsView(c *ui.Context) {
 			})
 		})
 		ui.Text(c, "浏览器跨域来源").Bold()
-		muted(c, "每行填写一个来源，例如 https://hwj123hwj.github.io。留空允许所有来源；网页仍需提供有效 API key。")
+		muted(c, "每行填写一个来源，例如 https://nightgopher.github.io。留空允许所有来源；网页仍需提供有效 API key。")
 		ui.TextArea(c, &a.corsDraft).Height(100).Label("允许的跨域来源").Disabled(a.busy != "")
 		ui.Row(c).Gap(8).Children(func() {
 			ui.Button(c, "撤销来源修改").Disabled(a.busy != "").OnClick(func() { a.corsDraft = strings.Join(a.corsConfig.AllowedOrigins, "\n") })

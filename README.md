@@ -17,19 +17,19 @@
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hwj123hwj/litellm-gateway/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.sh | bash
 ```
 
 ### Windows (CMD)
 
 ```cmd
-curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/hwj123hwj/litellm-gateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
+curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-$installer = Join-Path $env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/hwj123hwj/litellm-gateway/main/scripts/install.ps1 -OutFile $installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer
+$installer = Join-Path $env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.ps1 -OutFile $installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer
 ```
 
 安装脚本会自动完成：下载二进制 → 配置 PATH → 引导填入 API Key → 完成。
@@ -41,11 +41,11 @@ Debian、Ubuntu 及其衍生发行版可以直接安装 Release 附带的 .deb �
 
 ```bash
 # 从最新 Release 下载并安装服务端（自动注册 systemd 服务并生成随机 Master Key）
-curl -fsSL -o easygateway-server.deb https://github.com/hwj123hwj/litellm-gateway/releases/latest/download/easygateway-server_0.3.11-1_amd64.deb
+curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway-server_0.3.11-1_amd64.deb
 sudo dpkg -i easygateway-server.deb || sudo apt-get install -f
 ```
 
-> 注意：上面的文件名含版本号，请到 [Releases](https://github.com/hwj123hwj/litellm-gateway/releases/latest) 按架构选择对应文件。从 v0.3.7 起服务端包名为 `easygateway-server`，与桌面客户端的 `easygateway` 包相互独立，可同时安装；从 v0.3.6 及更早的服务端包（旧名 `easygateway`）升级时，dpkg 会自动迁移到新包名。
+> 注意：上面的文件名含版本号，请到 [Releases](https://github.com/nightgopher/litellm-gateway/releases/latest) 按架构选择对应文件。从 v0.3.7 起服务端包名为 `easygateway-server`，与桌面客户端的 `easygateway` 包相互独立，可同时安装；从 v0.3.6 及更早的服务端包（旧名 `easygateway`）升级时，dpkg 会自动迁移到新包名。
 
 安装后的布局：
 
@@ -68,7 +68,7 @@ sudo dpkg --purge easygateway-server   # 卸载并清除全部数据
 桌面管理端从 v0.3.7 起提供 Linux 包（amd64 / arm64），安装后出现在应用菜单，命令行入口为 `easygateway-desktop`。桌面端只管理网关，不自带网关进程；运行需要 GTK3 与 WebKitGTK 4.1（包依赖已声明）：
 
 ```bash
-curl -fsSL -o easygateway-desktop.deb https://github.com/hwj123hwj/litellm-gateway/releases/latest/download/easygateway_0.3.11_amd64.deb
+curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway_0.3.11_amd64.deb
 sudo dpkg -i easygateway-desktop.deb || sudo apt-get install -f
 ```
 
@@ -177,7 +177,7 @@ MY_PROVIDER_API_KEY=sk-xxx
 
 `jev-1.13-free` 可使用上游匿名免费额度；`jev-1.13` 需要在网关 `.env` 中设置工作区 `OPENCODE_API_KEY` 并重启。OpenCode 渠道设备码 OAuth 不能替代此 Key。模型目录以 `protocol: systemone`、`capabilities: [systemone]` 标记；缺少付费 Key 时仍保留目录并说明不可用原因。免费额度耗尽返回真实 `429`，不自动切换到付费模型。
 
-使用 [Jev Demo](https://hwj123hwj.github.io/jev-demo/) 或参阅 [请求示例](go-gateway/README.md#system-one结构化判断)。
+使用 [Jev Demo](https://nightgopher.github.io/jev-demo/) 或参阅 [请求示例](go-gateway/README.md#system-one结构化判断)。
 
 ## 支持的模型
 
@@ -313,11 +313,11 @@ litellm-gateway/
 
 ## 相关项目
 
-- [EasyAgent](https://github.com/hwj123hwj/easyagent)（原 pi-go）— AI 编程搭档，写代码、搜知识、放音乐
+- [EasyAgent](https://github.com/nightgopher/easyagent)（原 pi-go）— AI 编程搭档，写代码、搜知识、放音乐
 
 ## 展示页
 
-访问 [hwj123hwj.github.io](https://hwj123hwj.github.io) 查看所有项目。
+访问 [nightgopher.github.io](https://nightgopher.github.io) 查看所有项目。
 
 ### 管理端支持范围
 

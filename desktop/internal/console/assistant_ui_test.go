@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/hwj123hwj/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
 )
 
 const assistantMarkdownFixture = "## 网关状态\n\n**已恢复**，可以继续调用。\n\n| 时间 | 模型 | 问题 |\n|---|---|---|\n| 10:58 | glm-model | DNS 解析超时 |\n| 11:01 | deepseek-model | 请求已取消 |\n\n### 建议\n\n1. 检查本机 DNS。\n2. 重试一个简短请求。\n\n```sh\ncurl http://localhost:4001/healthz\n```\n\n[文档](https://example.com/docs) · [非法链接](javascript:alert(1))"

@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 umask 077
 
-API_BASE=${GATEWAY_API_BASE:-https://api.github.com/repos/hwj123hwj/litellm-gateway}
+API_BASE=${GATEWAY_API_BASE:-https://api.github.com/repos/nightgopher/litellm-gateway}
 WORKFLOW=${GATEWAY_WORKFLOW:-ci.yml}
 ARTIFACT_NAME=${GATEWAY_ARTIFACT_NAME:-gateway-linux-amd64}
 TOKEN_FILE=${GATEWAY_GITHUB_TOKEN_FILE:-"$HOME/.config/litellm-gateway/github-token"}

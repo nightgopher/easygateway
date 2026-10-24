@@ -289,7 +289,7 @@ func (t *memoryLookupTool) Parameters() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"project": map[string]any{"type": "string", "description": "仓库作用域，如 github:hwj123hwj/litellm-gateway"},
+			"project": map[string]any{"type": "string", "description": "仓库作用域，如 github:nightgopher/litellm-gateway"},
 			"client":  map[string]any{"type": "string", "description": "客户端作用域，如 claude-code"},
 		},
 	}

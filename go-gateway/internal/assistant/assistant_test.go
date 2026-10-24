@@ -28,7 +28,7 @@ func TestMemoryProposeToolCreatesCandidateNotActive(t *testing.T) {
 	result, err := tool.Execute(t.Context(), []byte(`{
 		"statement": "部署走 tag 驱动流水线",
 		"scope_type": "project",
-		"scope_key": "github:hwj123hwj/litellm-gateway"
+		"scope_key": "github:nightgopher/litellm-gateway"
 	}`), nil)
 	if err != nil {
 		t.Fatalf("propose: %v", err)
@@ -42,7 +42,7 @@ func TestMemoryProposeToolCreatesCandidateNotActive(t *testing.T) {
 
 	// candidate 不进检索——助理查不到自己未确认的提案
 	lookup := newMemoryLookupTool(store)
-	res, err := lookup.Execute(t.Context(), []byte(`{"project":"github:hwj123hwj/litellm-gateway"}`), nil)
+	res, err := lookup.Execute(t.Context(), []byte(`{"project":"github:nightgopher/litellm-gateway"}`), nil)
 	if err != nil {
 		t.Fatalf("lookup: %v", err)
 	}

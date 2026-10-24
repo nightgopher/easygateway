@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 
-$script:Repository = 'hwj123hwj/litellm-gateway'
+$script:Repository = 'nightgopher/litellm-gateway'
 $script:BinaryName = 'gateway.exe'
 
 function Write-InstallerMessage {

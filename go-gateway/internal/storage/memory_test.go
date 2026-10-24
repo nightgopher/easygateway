@@ -22,7 +22,7 @@ func newTestMemoryStore(t *testing.T) *SQLiteStore {
 func activeProjectStatement(statement string) memory.Memory {
 	return memory.Memory{
 		ScopeType: memory.ScopeProject,
-		ScopeKey:  "github:hwj123hwj/litellm-gateway",
+		ScopeKey:  "github:nightgopher/litellm-gateway",
 		Statement: statement,
 		Status:    memory.StatusActive,
 		Source:    "manual",
@@ -54,9 +54,9 @@ func TestMemoryLookupMergesScopesProjectFirst(t *testing.T) {
 		{ScopeType: memory.ScopeClient, ScopeKey: "claude-code", Statement: "claude-code 偏好简洁输出", Status: memory.StatusActive, Source: "manual"},
 		activeProjectStatement("部署走 tag 驱动流水线"),
 		// candidate 不参与检索
-		{ScopeType: memory.ScopeProject, ScopeKey: "github:hwj123hwj/litellm-gateway", Statement: "候选条目", Status: memory.StatusCandidate, Source: "agent:claude-code"},
+		{ScopeType: memory.ScopeProject, ScopeKey: "github:nightgopher/litellm-gateway", Statement: "候选条目", Status: memory.StatusCandidate, Source: "agent:claude-code"},
 		// retired 不参与检索
-		{ScopeType: memory.ScopeProject, ScopeKey: "github:hwj123hwj/litellm-gateway", Statement: "退役条目", Status: memory.StatusRetired, Source: "manual"},
+		{ScopeType: memory.ScopeProject, ScopeKey: "github:nightgopher/litellm-gateway", Statement: "退役条目", Status: memory.StatusRetired, Source: "manual"},
 		// 其他 project 的条目不属于当前作用域
 		{ScopeType: memory.ScopeProject, ScopeKey: "github:hwj123hwj/other", Statement: "别的项目条目", Status: memory.StatusActive, Source: "manual"},
 	}
@@ -66,7 +66,7 @@ func TestMemoryLookupMergesScopesProjectFirst(t *testing.T) {
 		}
 	}
 
-	got, err := store.LookupFor("claude-code", "github:hwj123hwj/litellm-gateway", 20)
+	got, err := store.LookupFor("claude-code", "github:nightgopher/litellm-gateway", 20)
 	if err != nil {
 		t.Fatalf("LookupFor: %v", err)
 	}

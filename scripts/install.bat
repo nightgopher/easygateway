@@ -4,7 +4,7 @@ setlocal
 set "LOCAL_INSTALLER=%~dp0install.ps1"
 set "INSTALLER=%LOCAL_INSTALLER%"
 set "DOWNLOADED_INSTALLER="
-if not defined LLM_GATEWAY_INSTALLER_URL set "LLM_GATEWAY_INSTALLER_URL=https://raw.githubusercontent.com/hwj123hwj/litellm-gateway/main/scripts/install.ps1"
+if not defined LLM_GATEWAY_INSTALLER_URL set "LLM_GATEWAY_INSTALLER_URL=https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.ps1"
 
 if exist "%INSTALLER%" goto run_installer
 

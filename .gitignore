@@ -25,3 +25,4 @@ dist/
 # MyGo desktop output (excluded from Spotlight indexing)
 desktop/build.noindex/
 desktop/.mygo/
+data/

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/hwj123hwj/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
 )
 
 var pages = []struct{ ID, Title, Subtitle string }{

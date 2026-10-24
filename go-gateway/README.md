@@ -600,7 +600,7 @@ bash -c 'install -d -m 700 ~/.config/litellm-gateway; read -r -s -p "GitHub Acti
 令牌只用于读取 GitHub Actions API 元数据和成功 CI 生成的构建产物，保存在主机的独立权限文件中，不会进入服务环境变量、进程参数或日志。主机保留自己的 .env 和 provider 凭据。随后在主机上运行一次安装命令（此项目默认使用 Linux 用户 q 和 llm-gateway.service）：
 
     set -o pipefail
-    curl --fail --silent --show-error https://api.github.com/repos/hwj123hwj/litellm-gateway/contents/scripts/install-mini-gateway-updater.sh | python3 -c 'import base64,json,sys; print(base64.b64decode("".join(json.load(sys.stdin)["content"].split())).decode(), end="")' | bash
+    curl --fail --silent --show-error https://api.github.com/repos/nightgopher/litellm-gateway/contents/scripts/install-mini-gateway-updater.sh | python3 -c 'import base64,json,sys; print(base64.b64decode("".join(json.load(sys.stdin)["content"].split())).decode(), end="")' | bash
 
 如果从 Mac 执行，可通过 SSH 完成这次凭据录入和安装；后续检查、下载和重启均由主机本地 timer 完成，无需逐次 SSH。安装脚本不使用 sudo；配置文件位于 ~/.config/litellm-gateway/update.env。
 
@@ -781,10 +781,10 @@ OpenCode 免费档仅允许官方 OpenCode 客户端使用，上游登录不能�
 ```yaml
 cors:
   allowed_origins:
-    - https://hwj123hwj.github.io
+    - https://nightgopher.github.io
     - http://localhost:5173
 ```
 
-随后热加载，或直接在桌面「设置 → 网关配置 → 浏览器跨域来源」逐行填写并保存。管理接口 `PUT /admin/config/cors` 接收 `{"allowed_origins":["https://hwj123hwj.github.io"]}`，验证完整配置并原子保存到 YAML 后热加载；验证或写入失败保留原文件与策略。空数组恢复默认 `*`，不接受通配符、路径、凭据、query、fragment 或 `null` 来源。
+随后热加载，或直接在桌面「设置 → 网关配置 → 浏览器跨域来源」逐行填写并保存。管理接口 `PUT /admin/config/cors` 接收 `{"allowed_origins":["https://nightgopher.github.io"]}`，验证完整配置并原子保存到 YAML 后热加载；验证或写入失败保留原文件与策略。空数组恢复默认 `*`，不接受通配符、路径、凭据、query、fragment 或 `null` 来源。
 
 白名单匹配时回显 Origin 并设置 `Vary: Origin`；不匹配的实际请求与 OPTIONS 返回 403 且没有允许跨域响应头。CORS 不使用 cookie 凭据；预检不需要 token，实际 API 请求仍须鉴权。原生客户端与没有 Origin 的请求仍按原有认证规则处理，因此白名单只能约束浏览器，不能替代 API key 管理。

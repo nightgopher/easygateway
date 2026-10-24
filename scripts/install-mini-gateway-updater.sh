@@ -2,7 +2,7 @@
 # One-time, unprivileged bootstrap for the q user on the Linux mini host.
 set -Eeuo pipefail
 
-REPOSITORY=hwj123hwj/litellm-gateway
+REPOSITORY=nightgopher/litellm-gateway
 API="https://api.github.com/repos/$REPOSITORY"
 API_HEADERS=(-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
 TOKEN_FILE="$HOME/.config/litellm-gateway/github-token"
@@ -50,7 +50,7 @@ CONFIG="$HOME/.config/litellm-gateway/update.env"
 if [[ ! -e "$CONFIG" ]]; then
   umask 077
   cat > "$CONFIG" <<CONFIG_EOF
-GATEWAY_API_BASE=https://api.github.com/repos/hwj123hwj/litellm-gateway
+GATEWAY_API_BASE=https://api.github.com/repos/nightgopher/litellm-gateway
 GATEWAY_GITHUB_TOKEN_FILE=$TOKEN_FILE
 GATEWAY_BINARY=$HOME/.llm-gateway/bin/gateway
 GATEWAY_SERVICE=llm-gateway.service

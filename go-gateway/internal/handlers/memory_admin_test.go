@@ -146,7 +146,7 @@ func TestMemoryDraftGoesToCandidateAndConfirmActivates(t *testing.T) {
 	w := doJSON(t, engine, http.MethodPost, "/v1/memory", map[string]any{
 		"statement":  "部署走 tag 驱动流水线",
 		"scope_type": "project",
-		"scope_key":  "github:hwj123hwj/litellm-gateway",
+		"scope_key":  "github:nightgopher/litellm-gateway",
 		"client":     "hwjcode",
 	})
 	if w.Code != http.StatusOK {
@@ -157,7 +157,7 @@ func TestMemoryDraftGoesToCandidateAndConfirmActivates(t *testing.T) {
 	}
 
 	// candidate 不出现在检索
-	w = doJSON(t, engine, http.MethodGet, "/v1/memory?client=hwjcode&project=github:hwj123hwj/litellm-gateway", nil)
+	w = doJSON(t, engine, http.MethodGet, "/v1/memory?client=hwjcode&project=github:nightgopher/litellm-gateway", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("lookup 失败: %d", w.Code)
 	}
@@ -175,7 +175,7 @@ func TestMemoryDraftGoesToCandidateAndConfirmActivates(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("确认失败: %d %s", w.Code, w.Body.String())
 	}
-	w = doJSON(t, engine, http.MethodGet, "/v1/memory?client=hwjcode&project=github:hwj123hwj/litellm-gateway", nil)
+	w = doJSON(t, engine, http.MethodGet, "/v1/memory?client=hwjcode&project=github:nightgopher/litellm-gateway", nil)
 	_ = json.Unmarshal(w.Body.Bytes(), &lookup)
 	if len(lookup.Memories) != 1 || lookup.Block == "" {
 		t.Fatalf("确认后应可检索且带注入块: %+v", lookup)
