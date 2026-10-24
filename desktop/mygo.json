@@ -1,7 +1,7 @@
 {
   "name": "EasyGateway",
   "identifier": "com.hwj.llm-gateway.desktop",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "out": "build.noindex",
   "macos": {
     "minimumSystemVersion": "13.0"
@@ -9,7 +9,10 @@
   "linux": {
     "maintainer": "weijian <weijian@example.com>",
     "comment": "EasyGateway 桌面管理端（管理本机或远程网关）",
-    "categories": ["Development", "Utility"],
+    "categories": [
+      "Development",
+      "Utility"
+    ],
     "command": "easygateway-desktop"
   }
 }
