@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hwj123hwj/easyagent/sdk/skillmarket"
+	"github.com/nightgopher/easyagent/sdk/skillmarket"
 )
 
 // SkillsMarketHandler 把远端技能商城接到管理面板：浏览/搜索远端目录、

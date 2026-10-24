@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	piagent "github.com/hwj123hwj/easyagent/sdk/agent"
+	piagent "github.com/nightgopher/easyagent/sdk/agent"
 )
 
 // 网关运行状态工具：让助理能回答"哪些 Provider 熔断了""今天流量如何"

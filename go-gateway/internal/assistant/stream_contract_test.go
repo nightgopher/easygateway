@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	piagent "github.com/hwj123hwj/easyagent/sdk/agent"
+	piagent "github.com/nightgopher/easyagent/sdk/agent"
 )
 
 const streamContractDelta = `data: {"choices":[{"index":0,"delta":{"content":"部分回复"},"finish_reason":null}]}` + "\n\n"

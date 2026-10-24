@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hwj123hwj/easyagent/sdk/skillmarket"
+	"github.com/nightgopher/easyagent/sdk/skillmarket"
 )
 
 // SkillsInstallJobsHandler 把技能安装做成网关侧任务：提交后立刻返回任务号，
