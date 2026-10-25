@@ -167,6 +167,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          VERSION=$(python3 -c 'import json; print(json.load(open("desktop/mygo.json"))["version"])')
           DMG="../desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
           xcrun notarytool store-credentials "easygateway-notary" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
           xcrun notarytool submit "$DMG" --keychain-profile "easygateway-notary" --wait
