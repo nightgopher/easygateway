@@ -110,7 +110,11 @@ func RenderYAML(options Options) string {
 	return b.String()
 }
 
-var chainsHeader = regexp.MustCompile(`(?m)^chains:\s*$`)
+// chainsHeader 匹配顶层 chains: 行（可带行尾注释或空值）。只要命中就以它
+// 为插入锚点，新条目插在它之前结构必然合法；没命中才退回文件末尾追加。
+// 不限定行尾内容：`chains:  # 说明` 或 `chains: {}` 同样是有效锚点，
+// 漏识别会把条目追加到 chains 之后、破坏 YAML 结构。
+var chainsHeader = regexp.MustCompile(`(?m)^chains:`)
 
 // InsertIntoConfig 把条目块插入 providers.yaml 文本：顶层 chains: 键之前
 // （providers 列表末尾）；没有 chains: 时（先保证结尾换行）追加到文件末尾。

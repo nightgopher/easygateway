@@ -138,3 +138,15 @@ func TestRenderedConfigLoads(t *testing.T) {
 		t.Fatalf("deepseek 未完整注册: %+v", cfg.Providers)
 	}
 }
+
+// chains: 带行尾注释时同样是有效锚点：漏识别会把条目追加到 chains 之后，
+// 破坏 YAML 结构。
+func TestChainsWithTrailingComment(t *testing.T) {
+	config := "providers:\n  - name: glm\n    models: []\n\nchains:  # 路由链\n  coding:\n    - glm\n"
+	next := InsertIntoConfig(config, RenderYAML(Options{Preset: registry["deepseek"], APIKey: "k", Models: []string{"d"}}))
+	chainsAt := strings.Index(next, "chains:")
+	deepseekAt := strings.Index(next, "- name: deepseek")
+	if chainsAt < 0 || deepseekAt < 0 || deepseekAt > chainsAt {
+		t.Fatalf("新条目应插在 chains:（含行尾注释）之前:\n%s", next)
+	}
+}
