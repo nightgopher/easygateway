@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/archive"
 )
 
 func TestArchiveExportEmitsJSONLWithCursor(t *testing.T) {

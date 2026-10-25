@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // loomy 渠道测试：覆盖 HMAC-SHA1 签名原文、信封解析、微信扫码原语（uuid 提取、长轮询

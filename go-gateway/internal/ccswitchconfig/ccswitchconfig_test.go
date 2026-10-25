@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 	"gopkg.in/yaml.v3"
 )
 

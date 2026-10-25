@@ -51,7 +51,7 @@ Admin API 是两者之间唯一的契约边界：网关不感知客户端的存�
 
 收到退出信号后先排空 HTTP 请求（最多 15 秒），再使用共同的 15 秒窗口收尾指标、归档与 SQLite；超时记录未完成步骤。助理消费 EasyAgent SDK 事件直到 channel 关闭，保留部分回复与原错误，再释放本轮以便重试。依赖版本以 [go.mod](../go-gateway/go.mod) 为准。
 
-固定对照 ZCode `ba61ca16`，参考其业务错误优先、输出后禁止重放、退出等待清理和共同 deadline 原则；缺终态 EOF 检测、Go HTTP 排空与 SQLite 写入由本项目实现。源码对照与差异见 [PR #93](https://github.com/nightgopher/litellm-gateway/pull/93)；SDK 升级及助理适配见 [PR #94](https://github.com/nightgopher/litellm-gateway/pull/94)。
+固定对照 ZCode `ba61ca16`，参考其业务错误优先、输出后禁止重放、退出等待清理和共同 deadline 原则；缺终态 EOF 检测、Go HTTP 排空与 SQLite 写入由本项目实现。源码对照与差异见 [PR #93](https://github.com/nightgopher/easygateway/pull/93)；SDK 升级及助理适配见 [PR #94](https://github.com/nightgopher/easygateway/pull/94)。
 
 ## 3. desktop 内部结构
 
@@ -89,4 +89,4 @@ Admin API 是两者之间唯一的契约边界：网关不感知客户端的存�
 - **产品名**：EasyGateway（2026-10-10 起），前身 litellm-gateway / LLM Gateway；
 - **版本线**：自 `v0.1.0` 重新开始，旧 `v1.x` 标签与 Release 已移除；
 - **兼容标识**：安装脚本默认仍使用 `gateway` / `llm-gateway`、`~/.llm-gateway`；`LLM_GATEWAY_HOME` 可覆盖安装根目录。仓库迷你主机安装器默认服务名为 `llm-gateway.service`，已迁移主机可使用不同单元与目录，须核实实际服务和更新器配置。macOS 脚本维护 `local.go-gateway`；`LITELLM_*` 环境变量和客户端 Provider 配置保留兼容，不依据产品改名擅自重命名运行入口；
-- **未迁移项**：GitHub 仓库名仍为 `litellm-gateway`，安装脚本 URL 与 Go module 路径随之保留。
+- **已完成更名**（2026-10-25）：GitHub 仓库为 `nightgopher/easygateway`，安装脚本 URL 与 Go module 路径（`github.com/nightgopher/easygateway`）均已更新。

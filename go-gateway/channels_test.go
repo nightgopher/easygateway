@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/weijian/go-llm-gateway/internal/channel"
+	"github.com/nightgopher/easygateway/internal/channel"
 )
 
 // 这组测试直接断言 channels.go 的装配开关（buildChannelProvider），而不是复刻一份

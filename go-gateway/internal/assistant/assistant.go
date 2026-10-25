@@ -19,7 +19,7 @@ import (
 	"github.com/nightgopher/easyagent/sdk/ai"
 	"github.com/nightgopher/easyagent/sdk/ai/providers"
 
-	"github.com/weijian/go-llm-gateway/internal/memory"
+	"github.com/nightgopher/easygateway/internal/memory"
 )
 
 // Config controls the resident assistant.
@@ -289,7 +289,7 @@ func (t *memoryLookupTool) Parameters() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"project": map[string]any{"type": "string", "description": "仓库作用域，如 github:nightgopher/litellm-gateway"},
+			"project": map[string]any{"type": "string", "description": "仓库作用域，如 github:nightgopher/easygateway"},
 			"client":  map[string]any{"type": "string", "description": "客户端作用域，如 claude-code"},
 		},
 	}

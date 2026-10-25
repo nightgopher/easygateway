@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/joho/godotenv"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // These instances are installed by setupDeepVProviders, outside providers.yaml.

@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/metrics"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func TestAdminProviderControlsExposeAndUpdateRuntimeState(t *testing.T) {

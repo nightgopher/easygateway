@@ -4,14 +4,14 @@
 set -Eeuo pipefail
 umask 077
 
-API_BASE=${GATEWAY_API_BASE:-https://api.github.com/repos/nightgopher/litellm-gateway}
+API_BASE=${GATEWAY_API_BASE:-https://api.github.com/repos/nightgopher/easygateway}
 WORKFLOW=${GATEWAY_WORKFLOW:-ci.yml}
 ARTIFACT_NAME=${GATEWAY_ARTIFACT_NAME:-gateway-linux-amd64}
-TOKEN_FILE=${GATEWAY_GITHUB_TOKEN_FILE:-"$HOME/.config/litellm-gateway/github-token"}
+TOKEN_FILE=${GATEWAY_GITHUB_TOKEN_FILE:-"$HOME/.config/easygateway/github-token"}
 BINARY=${GATEWAY_BINARY:-"$HOME/.llm-gateway/bin/gateway"}
 SERVICE=${GATEWAY_SERVICE:-llm-gateway.service}
 HEALTH_URL=${GATEWAY_HEALTH_URL:-http://127.0.0.1:4001/health}
-STATE_DIR=${GATEWAY_UPDATE_STATE:-"$HOME/.local/state/litellm-gateway-update"}
+STATE_DIR=${GATEWAY_UPDATE_STATE:-"$HOME/.local/state/easygateway-update"}
 API_HEADERS=(-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
 
 mkdir -p "$STATE_DIR" "$(dirname "$BINARY")"

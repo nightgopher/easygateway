@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/weijian/go-llm-gateway/internal/memory"
+	"github.com/nightgopher/easygateway/internal/memory"
 )
 
 // MemoryHandler is the client-facing memory API. 读写分离遵循"agent 起草、

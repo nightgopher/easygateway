@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 // Router 管理提供商路由和 fallback

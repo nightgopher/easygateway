@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/weijian/go-llm-gateway/internal/assistant"
+	"github.com/nightgopher/easygateway/internal/assistant"
 )
 
 // AssistantHandler streams the resident assistant over SSE. Mounted under

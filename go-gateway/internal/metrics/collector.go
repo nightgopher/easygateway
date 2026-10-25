@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 // RequestRecord 单条请求记录

@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // Candidate 是一条 cc-switch 条目转换后的结果。Status 为 importable 表示

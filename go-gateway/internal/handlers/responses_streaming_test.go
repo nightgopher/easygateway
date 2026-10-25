@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // ZCode（Vercel AI SDK openai-responses 解析器）用严格 Zod schema 校验每条

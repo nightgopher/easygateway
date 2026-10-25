@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/metrics"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // DailyStatsSource 读取持久化的按天聚合行，历史统计端点的数据来源。

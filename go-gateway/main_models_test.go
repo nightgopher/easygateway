@@ -6,8 +6,8 @@ import (
 	"log"
 	"testing"
 
-	"github.com/weijian/go-llm-gateway/internal/config"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/config"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func TestDeepVNewModelRoutes(t *testing.T) {

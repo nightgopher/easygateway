@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // 这组测试把「渠道账号池 → provider 实例 → 上游请求」整条链接起来跑，是单测里

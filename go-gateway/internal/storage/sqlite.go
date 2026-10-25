@@ -12,7 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/weijian/go-llm-gateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/metrics"
 )
 
 // SQLiteStore SQLite 持久化存储

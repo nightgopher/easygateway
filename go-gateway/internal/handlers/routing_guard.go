@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func runGuardedStream(c *gin.Context, router *provider.Router, req *provider.Request, p provider.Provider, w io.Writer, forward func(context.Context, *provider.Request, io.Writer) error) error {

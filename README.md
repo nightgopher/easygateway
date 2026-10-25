@@ -17,19 +17,19 @@
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.sh | bash
 ```
 
 ### Windows (CMD)
 
 ```cmd
-curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
+curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-$installer = Join-Path $env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.ps1 -OutFile $installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer
+$installer = Join-Path $env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.ps1 -OutFile $installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer
 ```
 
 安装脚本会自动完成：下载二进制 → 配置 PATH → 引导填入 API Key → 完成。
@@ -41,11 +41,11 @@ Debian、Ubuntu 及其衍生发行版可以直接安装 Release 附带的 .deb �
 
 ```bash
 # 从最新 Release 下载并安装服务端（自动注册 systemd 服务并生成随机 Master Key）
-curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway-server_0.3.13-1_amd64.deb
+curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/easygateway/releases/latest/download/easygateway-server_0.3.14-1_amd64.deb
 sudo dpkg -i easygateway-server.deb || sudo apt-get install -f
 ```
 
-> 注意：上面的文件名含版本号，请到 [Releases](https://github.com/nightgopher/litellm-gateway/releases/latest) 按架构选择对应文件。从 v0.3.7 起服务端包名为 `easygateway-server`，与桌面客户端的 `easygateway` 包相互独立，可同时安装；从 v0.3.6 及更早的服务端包（旧名 `easygateway`）升级时，dpkg 会自动迁移到新包名。
+> 注意：上面的文件名含版本号，请到 [Releases](https://github.com/nightgopher/easygateway/releases/latest) 按架构选择对应文件。从 v0.3.7 起服务端包名为 `easygateway-server`，与桌面客户端的 `easygateway` 包相互独立，可同时安装；从 v0.3.6 及更早的服务端包（旧名 `easygateway`）升级时，dpkg 会自动迁移到新包名。
 
 安装后的布局：
 
@@ -68,7 +68,7 @@ sudo dpkg --purge easygateway-server   # 卸载并清除全部数据
 桌面管理端从 v0.3.7 起提供 Linux 包（amd64 / arm64），安装后出现在应用菜单，命令行入口为 `easygateway-desktop`。桌面端只管理网关，不自带网关进程；运行需要 GTK3 与 WebKitGTK 4.1（包依赖已声明）：
 
 ```bash
-curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/litellm-gateway/releases/latest/download/easygateway_0.3.13_amd64.deb
+curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/easygateway/releases/latest/download/easygateway_0.3.14_amd64.deb
 sudo dpkg -i easygateway-desktop.deb || sudo apt-get install -f
 ```
 
@@ -241,7 +241,7 @@ curl -X POST http://localhost:4001/v1/messages \
 ## 项目结构
 
 ```text
-litellm-gateway/
+easygateway/
 ├── go-gateway/              # Go 网关（主项目）
 │   ├── main.go              # 启动入口
 │   ├── internal/

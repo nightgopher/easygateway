@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/provider"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 func routingErrorStatus(err error) int {

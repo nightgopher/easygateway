@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/provider"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 type SystemOneHandler struct{ router *provider.Router }

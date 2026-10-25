@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/piconfig"
+	"github.com/nightgopher/easygateway/internal/piconfig"
 )
 
 func newPiTestServer(t *testing.T) (*gin.Engine, string) {

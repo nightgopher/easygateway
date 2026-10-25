@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/provider"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 const guardedSuccessSSE = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_ok\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"good\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n" +

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/channel"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/channel"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // ChannelAdminHandler 暴露账号渠道的登录与账号管理接口。它直接与 internal/channel

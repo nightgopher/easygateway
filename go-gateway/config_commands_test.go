@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func TestShippedConfigPassesOfflineValidation(t *testing.T) {

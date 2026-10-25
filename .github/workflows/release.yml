@@ -258,22 +258,22 @@ jobs:
           ### 安装
 
           \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.sh | bash
           \`\`\`
 
           \`\`\`cmd
-          curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
+          curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
           \`\`\`
 
           \`\`\`powershell
-          \$installer = Join-Path \$env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.ps1 -OutFile \$installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \$installer
+          \$installer = Join-Path \$env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.ps1 -OutFile \$installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \$installer
           \`\`\`
 
           ### 更新日志
           ${CHANGELOG}
 
           ### 下载
-          macOS 桌面包使用 ad-hoc 签名，尚未完成 Apple 公证。安装说明见 [桌面文档](https://github.com/nightgopher/litellm-gateway/blob/${CURRENT_TAG}/desktop/README.md)。
+          macOS 桌面包使用 ad-hoc 签名，尚未完成 Apple 公证。安装说明见 [桌面文档](https://github.com/nightgopher/easygateway/blob/${CURRENT_TAG}/desktop/README.md)。
 
           | 平台 | 文件 |
           |------|------|

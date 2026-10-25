@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/egoist/mygo/ui"
-	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/easygateway/desktop/internal/connection"
 	"math"
 	"sort"
 	"strings"

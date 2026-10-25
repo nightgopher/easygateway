@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/archive"
-	"github.com/weijian/go-llm-gateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/metrics"
 )
 
 func TestGatewayShutdownDrainsAcceptedRequest(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/metrics"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 // Logging 创建请求日志中间件，同时记录指标

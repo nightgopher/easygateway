@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 type memoryStore struct {

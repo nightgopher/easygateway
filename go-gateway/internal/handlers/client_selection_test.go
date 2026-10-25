@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/dshconfig"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/dshconfig"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func TestClientModelSelections(t *testing.T) {

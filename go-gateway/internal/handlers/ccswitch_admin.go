@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/weijian/go-llm-gateway/internal/ccswitchconfig"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/ccswitchconfig"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // CCSwitchHandler 把 cc-switch 里已配置的供应商迁移进网关：扫描预览

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/corspolicy"
+	"github.com/nightgopher/easygateway/internal/corspolicy"
 	"gopkg.in/yaml.v3"
 )
 

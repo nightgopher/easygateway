@@ -1,6 +1,6 @@
 [Unit]
 Description=EasyGateway - personal AI infrastructure gateway
-Documentation=https://github.com/nightgopher/litellm-gateway
+Documentation=https://github.com/nightgopher/easygateway
 After=network-online.target
 Wants=network-online.target
 

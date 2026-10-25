@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/metrics"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 func TestRequestIDPreservesSafeIncomingValueAndRecordsMetadata(t *testing.T) {

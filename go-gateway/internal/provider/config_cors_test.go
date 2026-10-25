@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/weijian/go-llm-gateway/internal/corspolicy"
+	"github.com/nightgopher/easygateway/internal/corspolicy"
 )
 
 func TestCORSUpdatePersistsAndInvalidChangesKeepFileAndPolicy(t *testing.T) {

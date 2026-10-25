@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/metrics"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 	_ "modernc.org/sqlite"
 )
 

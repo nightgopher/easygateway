@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/archive"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // ─── Responses API 数据结构 ──────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-module github.com/weijian/go-llm-gateway
+module github.com/nightgopher/easygateway
 
 go 1.26.10
 

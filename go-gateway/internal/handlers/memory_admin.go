@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/weijian/go-llm-gateway/internal/memory"
+	"github.com/nightgopher/easygateway/internal/memory"
 )
 
 // MemoryAdminHandler exposes governance endpoints for the memory data plane.

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/weijian/go-llm-gateway/internal/corspolicy"
+	"github.com/nightgopher/easygateway/internal/corspolicy"
 )
 
 // ValidationOptions separates offline syntax checks from credential readiness.

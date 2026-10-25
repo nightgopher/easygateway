@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 type Sample struct {

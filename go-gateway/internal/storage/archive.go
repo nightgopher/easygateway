@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/archive"
 )
 
 // initArchiveSchema creates the conversation_archives table. It is physically

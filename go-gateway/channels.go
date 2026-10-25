@@ -4,8 +4,8 @@ import (
 	"log"
 	"path/filepath"
 
-	"github.com/weijian/go-llm-gateway/internal/channel"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/channel"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // 账号渠道（第二类）装配。

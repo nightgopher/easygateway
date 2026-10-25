@@ -84,7 +84,7 @@ Conflicts: easygateway (<< 0.3.7)
 Replaces: easygateway
 Provides: easygateway
 Maintainer: weijian <weijian@example.com>
-Homepage: https://github.com/nightgopher/litellm-gateway
+Homepage: https://github.com/nightgopher/easygateway
 Description: EasyGateway - personal AI infrastructure gateway (server)
  Unified AI gateway written in Go: one endpoint for Claude Code,
  Codex CLI and other AI apps, with OpenAI Chat Completions,
@@ -198,7 +198,7 @@ gzip -9n -c "${REPO_ROOT}/go-gateway/README.md" > "${DOC_DIR}/gateway-README.md.
 cat > "${DOC_DIR}/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: easygateway-server
-Source: https://github.com/nightgopher/litellm-gateway
+Source: https://github.com/nightgopher/easygateway
 
 Files: *
 Copyright: 2026 weijian <weijian@example.com>

@@ -3,7 +3,7 @@
 # llm-gateway 一键安装脚本
 #
 # 用法:
-#   curl -fsSL https://raw.githubusercontent.com/nightgopher/litellm-gateway/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.sh | bash
 #
 # 脚本会自动完成:
 #   1. 检测系统 → 下载预编译二进制（或编译源码）
@@ -14,7 +14,7 @@
 #
 set -euo pipefail
 
-REPO="nightgopher/litellm-gateway"
+REPO="nightgopher/easygateway"
 INSTALL_ROOT="${LLM_GATEWAY_HOME:-$HOME/.llm-gateway}"
 INSTALL_DIR="${INSTALL_ROOT}/bin"
 BINARY_NAME="gateway"

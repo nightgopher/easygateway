@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/metrics"
 )
 
 func logDiscard() *log.Logger { return log.New(io.Discard, "", 0) }

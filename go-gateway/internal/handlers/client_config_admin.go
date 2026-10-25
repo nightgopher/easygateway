@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/dshconfig"
-	"github.com/weijian/go-llm-gateway/internal/piconfig"
-	"github.com/weijian/go-llm-gateway/internal/provider"
-	"github.com/weijian/go-llm-gateway/internal/zcodeconfig"
+	"github.com/nightgopher/easygateway/internal/dshconfig"
+	"github.com/nightgopher/easygateway/internal/piconfig"
+	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/zcodeconfig"
 )
 
 // ClientConfigHandler 把「同步模型清单到客户端」扩展到 Pi 之外：

@@ -600,7 +600,7 @@ bash -c 'install -d -m 700 ~/.config/litellm-gateway; read -r -s -p "GitHub Acti
 令牌只用于读取 GitHub Actions API 元数据和成功 CI 生成的构建产物，保存在主机的独立权限文件中，不会进入服务环境变量、进程参数或日志。主机保留自己的 .env 和 provider 凭据。随后在主机上运行一次安装命令（此项目默认使用 Linux 用户 q 和 llm-gateway.service）：
 
     set -o pipefail
-    curl --fail --silent --show-error https://api.github.com/repos/nightgopher/litellm-gateway/contents/scripts/install-mini-gateway-updater.sh | python3 -c 'import base64,json,sys; print(base64.b64decode("".join(json.load(sys.stdin)["content"].split())).decode(), end="")' | bash
+    curl --fail --silent --show-error https://api.github.com/repos/nightgopher/easygateway/contents/scripts/install-mini-gateway-updater.sh | python3 -c 'import base64,json,sys; print(base64.b64decode("".join(json.load(sys.stdin)["content"].split())).decode(), end="")' | bash
 
 如果从 Mac 执行，可通过 SSH 完成这次凭据录入和安装；后续检查、下载和重启均由主机本地 timer 完成，无需逐次 SSH。安装脚本不使用 sudo；配置文件位于 ~/.config/litellm-gateway/update.env。
 

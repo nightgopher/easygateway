@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/easygateway/desktop/internal/connection"
 )
 
 func TestOverviewPublishesChannelsOnlyOnCurrentUIOperation(t *testing.T) {

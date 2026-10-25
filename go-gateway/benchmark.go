@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/weijian/go-llm-gateway/internal/benchmark"
-	"github.com/weijian/go-llm-gateway/internal/piconfig"
+	"github.com/nightgopher/easygateway/internal/benchmark"
+	"github.com/nightgopher/easygateway/internal/piconfig"
 )
 
 func benchmarkModels(args []string) error {

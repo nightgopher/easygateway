@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // fakeUpstreamProvider 指向本地 httptest 上游的假 Provider。

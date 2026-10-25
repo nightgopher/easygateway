@@ -2,10 +2,10 @@
 # One-time, unprivileged bootstrap for the q user on the Linux mini host.
 set -Eeuo pipefail
 
-REPOSITORY=nightgopher/litellm-gateway
+REPOSITORY=nightgopher/easygateway
 API="https://api.github.com/repos/$REPOSITORY"
 API_HEADERS=(-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
-TOKEN_FILE="$HOME/.config/litellm-gateway/github-token"
+TOKEN_FILE="$HOME/.config/easygateway/github-token"
 
 for command in curl python3 systemctl install flock sha256sum; do
   command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 1; }
@@ -41,21 +41,21 @@ with open(sys.argv[2], "wb") as f:
 PY
 done
 
-mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.config/litellm-gateway" "$HOME/.local/state/litellm-gateway-update"
+mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.config/easygateway" "$HOME/.local/state/easygateway-update"
 install -m 0755 "$TEMP_DIR/scripts/gateway-auto-update.sh" "$HOME/.local/bin/gateway-auto-update"
 install -m 0644 "$TEMP_DIR/deploy/systemd/gateway-auto-update.service" "$HOME/.config/systemd/user/gateway-auto-update.service"
 install -m 0644 "$TEMP_DIR/deploy/systemd/gateway-auto-update.timer" "$HOME/.config/systemd/user/gateway-auto-update.timer"
 
-CONFIG="$HOME/.config/litellm-gateway/update.env"
+CONFIG="$HOME/.config/easygateway/update.env"
 if [[ ! -e "$CONFIG" ]]; then
   umask 077
   cat > "$CONFIG" <<CONFIG_EOF
-GATEWAY_API_BASE=https://api.github.com/repos/nightgopher/litellm-gateway
+GATEWAY_API_BASE=https://api.github.com/repos/nightgopher/easygateway
 GATEWAY_GITHUB_TOKEN_FILE=$TOKEN_FILE
 GATEWAY_BINARY=$HOME/.llm-gateway/bin/gateway
 GATEWAY_SERVICE=llm-gateway.service
 GATEWAY_HEALTH_URL=http://127.0.0.1:4001/health
-GATEWAY_UPDATE_STATE=$HOME/.local/state/litellm-gateway-update
+GATEWAY_UPDATE_STATE=$HOME/.local/state/easygateway-update
 CONFIG_EOF
 fi
 

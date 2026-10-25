@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/weijian/go-llm-gateway/internal/archive"
-	"github.com/weijian/go-llm-gateway/internal/assistant"
-	"github.com/weijian/go-llm-gateway/internal/memory"
+	"github.com/nightgopher/easygateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/assistant"
+	"github.com/nightgopher/easygateway/internal/memory"
 )
 
 // Config 应用全局配置

@@ -1,4 +1,4 @@
-module github.com/nightgopher/litellm-gateway/desktop
+module github.com/nightgopher/easygateway/desktop
 
 go 1.27.1
 

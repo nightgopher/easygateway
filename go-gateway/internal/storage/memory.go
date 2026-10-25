@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weijian/go-llm-gateway/internal/memory"
+	"github.com/nightgopher/easygateway/internal/memory"
 )
 
 // initMemorySchema creates the agent_memories table. Physically separate

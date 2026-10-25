@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/weijian/go-llm-gateway/internal/assistant"
-	"github.com/weijian/go-llm-gateway/internal/storage"
+	"github.com/nightgopher/easygateway/internal/assistant"
+	"github.com/nightgopher/easygateway/internal/storage"
 )
 
 // AssistantAdminHandler exposes prompt customization and feedback endpoints.

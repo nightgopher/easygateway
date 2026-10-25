@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/skills"
+	"github.com/nightgopher/easygateway/internal/skills"
 )
 
 func skillsTestRouter(t *testing.T, repo string) *gin.Engine {

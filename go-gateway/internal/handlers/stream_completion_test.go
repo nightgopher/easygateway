@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/archive"
-	"github.com/weijian/go-llm-gateway/internal/metrics"
-	"github.com/weijian/go-llm-gateway/internal/middleware"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/metrics"
+	"github.com/nightgopher/easygateway/internal/middleware"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func TestTruncatedStreamStopsFallbackAndRecordsInterruption(t *testing.T) {

@@ -14,9 +14,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/auth"
-	"github.com/weijian/go-llm-gateway/internal/provider"
-	"github.com/weijian/go-llm-gateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/auth"
+	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 const systemOneTestRequest = `{"model":"jev-alias","state":{"ticket":"payment failed"},"questions":{"urgent":{"type":"noul","instructions":"Urgent?"},"team":{"type":"choice","instructions":{"question":"Which team?"},"criteria":{"billing":{"description":"payments"},"technical":"software"}},"severity":{"type":"score","instructions":"Severity?","criteria":["low","medium","high"]}},"metadata":{"trace":"preserved"}}`

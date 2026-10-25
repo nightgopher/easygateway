@@ -64,7 +64,7 @@
 
 个人 agent 场景每个客户端的改造成本要趋近于零，因此 v1 只要求一个最薄 wrapper：
 
-1. 启动时按 `git remote get-url origin` 推导 `scope_key`（如 `github:nightgopher/litellm-gateway`）；
+1. 启动时按 `git remote get-url origin` 推导 `scope_key`（如 `github:nightgopher/easygateway`）；
 2. 请求前 `GET /v1/memory?client=<名字>&project=<scope_key>`，把 `block` 拼进 system 末尾；
 3. `POST /v1/memory` 上报候选记忆（可选）。
 
@@ -92,7 +92,7 @@
 返回 `error`，已收到的 `text_delta` 保留供展示。助理等待 SDK 本轮收尾后
 释放会话，随后可继续请求；客户端取消时保留取消错误并结束本轮。
 
-SDK 版本以 [go.mod](../go-gateway/go.mod) 为准。`PromptStream` 的 `error` 后仍可能产生部分结果和清理事件，消费者须读到 channel 关闭再返回；不能把带部分消息的 `done` 当成成功覆盖原错误。设计参考 ZCode 的流式生命周期，网关适配与验证见 [PR #93](https://github.com/nightgopher/litellm-gateway/pull/93) 和 [PR #94](https://github.com/nightgopher/litellm-gateway/pull/94)。
+SDK 版本以 [go.mod](../go-gateway/go.mod) 为准。`PromptStream` 的 `error` 后仍可能产生部分结果和清理事件，消费者须读到 channel 关闭再返回；不能把带部分消息的 `done` 当成成功覆盖原错误。设计参考 ZCode 的流式生命周期，网关适配与验证见 [PR #93](https://github.com/nightgopher/easygateway/pull/93) 和 [PR #94](https://github.com/nightgopher/easygateway/pull/94)。
 
 `GET /admin/assistant/models` 返回默认值和可选模型，聊天 body 为 `{"message":"...","model":"可选模型 ID"}`；省略 model 使用 `ASSISTANT_MODEL`，按次选择不改写默认配置。每个模型各有独立的内存历史，助理 Chat 整体串行执行；更新人设重建全部模型实例。客户端断开取消本轮，已断开的连接不保证收到收尾帧。
 

@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/weijian/go-llm-gateway/internal/piconfig"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/piconfig"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func doctorCommand(args []string) error {

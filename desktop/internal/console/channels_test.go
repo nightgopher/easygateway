@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/nightgopher/litellm-gateway/desktop/internal/connection"
+	"github.com/nightgopher/easygateway/desktop/internal/connection"
 )
 
 func channelsFixture(t *testing.T) (*App, chan func(), *atomic.Bool, chan string) {

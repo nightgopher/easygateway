@@ -3,7 +3,7 @@ package provider
 import (
 	"errors"
 
-	"github.com/weijian/go-llm-gateway/internal/archive"
+	"github.com/nightgopher/easygateway/internal/archive"
 )
 
 // RedactedErrorText 返回错误文本的脱敏版本。上游错误消息可能回显凭据

@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/piconfig"
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/piconfig"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 // PiConfigHandler 把 Pi 客户端的模型清单同步搬进控制面板：

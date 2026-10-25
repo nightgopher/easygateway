@@ -4,7 +4,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-EnvironmentFile=-%h/.config/litellm-gateway/update.env
+EnvironmentFile=-%h/.config/easygateway/update.env
 ExecStart=%h/.local/bin/gateway-auto-update
 TimeoutStartSec=3min
 Nice=10

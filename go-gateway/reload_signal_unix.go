@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/weijian/go-llm-gateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/provider"
 )
 
 func watchConfigReload(ctx context.Context, reloader *provider.ConfigReloader, logger *log.Logger) {

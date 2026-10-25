@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/weijian/go-llm-gateway/internal/skills"
+	"github.com/nightgopher/easygateway/internal/skills"
 )
 
 // SkillsHandler 把 custom-skills 技能仓库接到管理面板：浏览技能目录、
