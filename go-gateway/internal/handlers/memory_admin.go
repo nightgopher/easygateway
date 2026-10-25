@@ -15,17 +15,32 @@ import (
 // middleware as the rest of the admin API. 人拍板入口：confirm/retire/delete。
 type MemoryAdminHandler struct {
 	store memory.Store
-	log   *log.Logger
+	// disabled 表示网关未启用记忆（MEMORY_ENABLED=false，store 为 NoopStore）。
+	// 此时读端点照常返回空列表，写端点（增删改）返回 503 并说明开启方式——
+	// 对齐助理端点关闭时的契约：静默 200 会让管理端以为保存成功（inserted
+	// 字段并不被所有客户端检查）。
+	disabled bool
+	log      *log.Logger
 }
 
 // NewMemoryAdminHandler constructs the admin handler. store may be a
-// NoopStore when the feature is disabled — endpoints still respond so the
-// dashboard needs no feature flag.
+// NoopStore when the feature is disabled — read endpoints still respond so
+// the dashboard needs no feature flag.
 func NewMemoryAdminHandler(store memory.Store, logger *log.Logger) *MemoryAdminHandler {
 	if store == nil {
 		store = memory.NoopStore{}
 	}
-	return &MemoryAdminHandler{store: store, log: logger}
+	_, disabled := store.(memory.NoopStore)
+	return &MemoryAdminHandler{store: store, disabled: disabled, log: logger}
+}
+
+// rejectDisabled 统一处理写端点在记忆未启用时的响应。
+func (h *MemoryAdminHandler) rejectDisabled(c *gin.Context) bool {
+	if h.disabled {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "记忆未启用（设置 MEMORY_ENABLED=true 并重启网关）"})
+		return true
+	}
+	return false
 }
 
 // HandleList GET /admin/memories?status=&scope_type=&scope_key=&limit=&offset=
@@ -62,6 +77,9 @@ type createMemoryRequest struct {
 }
 
 func (h *MemoryAdminHandler) HandleCreate(c *gin.Context) {
+	if h.rejectDisabled(c) {
+		return
+	}
 	var req createMemoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体非法: " + err.Error()})
@@ -98,11 +116,17 @@ func (h *MemoryAdminHandler) HandleCreate(c *gin.Context) {
 
 // HandleConfirm POST /admin/memories/:id/confirm — 人拍板：candidate → active。
 func (h *MemoryAdminHandler) HandleConfirm(c *gin.Context) {
+	if h.rejectDisabled(c) {
+		return
+	}
 	h.transition(c, memory.StatusActive)
 }
 
 // HandleRetire POST /admin/memories/:id/retire — 过时/被反驳 → retired。
 func (h *MemoryAdminHandler) HandleRetire(c *gin.Context) {
+	if h.rejectDisabled(c) {
+		return
+	}
 	h.transition(c, memory.StatusRetired)
 }
 
@@ -131,6 +155,9 @@ func (h *MemoryAdminHandler) transition(c *gin.Context, status memory.Status) {
 
 // HandleDelete DELETE /admin/memories/:id
 func (h *MemoryAdminHandler) HandleDelete(c *gin.Context) {
+	if h.rejectDisabled(c) {
+		return
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "id 必须是整数"})

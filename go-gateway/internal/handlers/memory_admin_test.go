@@ -233,3 +233,44 @@ func TestMemoryNoopStoreKeepsEndpointsAlive(t *testing.T) {
 		t.Fatalf("停用状态下 lookup 仍应 200: %d", w.Code)
 	}
 }
+
+// 未启用记忆（NoopStore）时：读端点照常返回空列表，写端点返回 503 并
+// 说明开启方式，不再静默 200（管理端会误以为保存成功）。
+func TestMemoryAdminMutations503WhenDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewMemoryAdminHandler(memory.NoopStore{}, log.New(io.Discard, "", 0))
+	e := gin.New()
+	e.GET("/admin/memories", handler.HandleList)
+	e.POST("/admin/memories", handler.HandleCreate)
+	e.POST("/admin/memories/:id/confirm", handler.HandleConfirm)
+	e.DELETE("/admin/memories/:id", handler.HandleDelete)
+
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/memories", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("读端点应照常 200, got %d", w.Code)
+	}
+
+	for _, tc := range []struct {
+		method, path string
+		body         string
+	}{
+		{http.MethodPost, "/admin/memories", `{"scope_type":"global","statement":"x"}`},
+		{http.MethodPost, "/admin/memories/1/confirm", ""},
+		{http.MethodDelete, "/admin/memories/1", ""},
+	} {
+		w := httptest.NewRecorder()
+		var body io.Reader
+		if tc.body != "" {
+			body = bytes.NewBufferString(tc.body)
+		}
+		req := httptest.NewRequest(tc.method, tc.path, body)
+		e.ServeHTTP(w, req)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s %s 应 503, got %d: %s", tc.method, tc.path, w.Code, w.Body.String())
+		}
+		if !bytes.Contains(w.Body.Bytes(), []byte("MEMORY_ENABLED")) {
+			t.Fatalf("错误信息应说明开启方式: %s", w.Body.String())
+		}
+	}
+}
