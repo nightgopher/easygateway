@@ -10,6 +10,7 @@
 - **用量成本**：daily_stats 按 input/output token 拆分落库，`GET /admin/usage` 按「模型 × 渠道」折算美元成本（单价在 providers.yaml 的 pricing 声明），未计价模型明确列出。
 - **多密钥**：gateway key 给每个客户端发独立密钥，支持模型白名单（glob）与按天/周/月的 token 限额，预算耗尽返回 429 与重置时间，Admin API 管理创建/轮换/停用/删除。
 - **快速接入**：`gateway provider add <preset> <key> --models ...` 一条命令接入 deepseek/moonshot/openrouter 等常见供应商（文本级插入 providers.yaml，注释不动，SIGHUP 热重载生效）。
+- **失败模型清理**：探活被确定性拒绝（401/402/403/404）的模型可在桌面端一键预览并移除（providers.yaml 自动备份 + 热重载，429 等暂时性失败不参与）。
 - **技能中心**：custom-skills 仓库清单同步（符号链接落盘），远端技能市场浏览、搜索、安装与卸载，全局与项目两级范围。
 - **记忆与助理**：跨客户端个人记忆层（candidate/active 治理、密钥守门）与流式常驻助理。
 - **归档与导出**：可控的完整对话归档（脱敏、限长、保留期清理），JSONL 增量导出供知识库消费。

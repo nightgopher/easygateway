@@ -25,6 +25,29 @@ type Provider struct {
 	LastProbe   string  `json:"last_probe_at"`
 	NextRetry   string  `json:"next_retry_at"`
 }
+
+// PruneCandidate 是「清理失败模型」预览里的一条候选（网关 /admin/models/prune）。
+type PruneCandidate struct {
+	Model    string `json:"model"`
+	Provider string `json:"provider"`
+	Reason   string `json:"reason"`
+}
+
+// PrunePreview 是 dry-run 响应。
+type PrunePreview struct {
+	ToRemove []PruneCandidate `json:"to_remove"`
+}
+
+// PruneResult 是执行响应。
+type PruneResult struct {
+	Removed          []PruneCandidate `json:"removed"`
+	ProvidersRemoved []string         `json:"providers_removed"`
+	ChainsAffected   []struct {
+		Chain     string   `json:"chain"`
+		Remaining []string `json:"remaining"`
+	} `json:"chains_affected"`
+}
+
 type Model struct {
 	Health       ModelHealth `json:"health"`
 	Name         string      `json:"model"`

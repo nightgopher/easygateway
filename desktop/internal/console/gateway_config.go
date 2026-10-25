@@ -104,3 +104,44 @@ func (a *App) probeAnonymousModels() {
 		return func() { a.reload(); a.notice = "匿名模型探活已完成" }, err
 	})
 }
+
+// prunePreview 先 dry-run：拉取可清理的失败模型清单，弹窗让用户确认。
+// 没有候选时直接提示，不打扰。
+func (a *App) prunePreview() {
+	a.work("正在检查失败模型", 35*time.Second, func(ctx context.Context, client *connection.Client) (func(), error) {
+		var preview PrunePreview
+		err := client.JSON(ctx, "POST", "/models/prune", map[string]any{"dry_run": true}, &preview)
+		return func() {
+			if len(preview.ToRemove) == 0 {
+				a.notice = "没有可清理的失败模型（仅清理探活被 401/402/403/404 确定性拒绝的模型）"
+				return
+			}
+			a.pruneCandidates = preview.ToRemove
+			a.pruneOpen = true
+		}, err
+	})
+}
+
+// pruneExecute 用户在弹窗确认后执行：移除候选模型并热重载。
+func (a *App) pruneExecute() {
+	models := make([]string, 0, len(a.pruneCandidates))
+	for _, candidate := range a.pruneCandidates {
+		models = append(models, candidate.Model)
+	}
+	a.work("正在清理失败模型", 35*time.Second, func(ctx context.Context, client *connection.Client) (func(), error) {
+		var result PruneResult
+		err := client.JSON(ctx, "POST", "/models/prune", map[string]any{"dry_run": false, "models": models}, &result)
+		return func() {
+			a.pruneOpen = false
+			a.pruneCandidates = nil
+			a.reload()
+			emptyChains := ""
+			for _, chain := range result.ChainsAffected {
+				if len(chain.Remaining) == 0 {
+					emptyChains += "；链 " + chain.Chain + " 已空"
+				}
+			}
+			a.notice = fmt.Sprintf("已移除 %d 个失败模型", len(result.Removed)) + emptyChains
+		}, err
+	})
+}

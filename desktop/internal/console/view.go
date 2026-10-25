@@ -245,6 +245,7 @@ func (a *App) View(c *ui.Context) {
 	a.editor(c)
 	a.browserModal(c)
 	a.modelPickerModal(c)
+	a.pruneDialog(c)
 	if ui.AlertDialog(c, &a.deleteOpen, "确认移除？", a.editorTitle, "取消", "移除") == 1 && a.deleteAction != nil {
 		action := a.deleteAction
 		a.deleteAction = nil
@@ -356,6 +357,29 @@ func (a *App) editConnection(p connection.Profile) {
 func input(c *ui.Context, label string, value *string, hint string) {
 	ui.Field(c, label, func() { ui.TextInput(c, value).Placeholder(hint).FillWidth() })
 }
+
+// pruneDialog 是「清理失败模型」的确认弹窗：列出候选与失败原因，
+// 用户确认后才真正执行移除。
+func (a *App) pruneDialog(c *ui.Context) {
+	ui.Modal(c, &a.pruneOpen, func() {
+		ui.Column(c).Width(560).Gap(14).Children(func() {
+			ui.Text(c, "清理失败模型").FontSize(22).Bold()
+			muted(c, "以下模型的最近一次探活被上游确定性拒绝（401/402/403/404，含模型不存在、无权限、凭据失效）。移除会编辑网关的 providers.yaml（自动备份）并热重载；429/5xx 等暂时性失败不会出现在这里。")
+			ui.List(c, nil, len(a.pruneCandidates), func(i int) {
+				candidate := a.pruneCandidates[i]
+				ui.Column(c.Key(candidate.Model)).Gap(2).Padding(0, 0, 8, 0).Children(func() {
+					ui.Text(c, candidate.Model).Bold().Selectable()
+					muted(c, "渠道 "+candidate.Provider+" · "+candidate.Reason)
+				})
+			}).Grow(1).MinHeight(120).MaxHeight(320)
+			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+				ui.Button(c, "取消").Disabled(a.busy != "").OnClick(func() { a.pruneOpen = false })
+				ui.PrimaryButton(c, "确认移除").Disabled(a.busy != "").OnClick(a.pruneExecute)
+			})
+		})
+	})
+}
+
 func (a *App) editor(c *ui.Context) {
 	wasOpen := a.editorOpen
 	ui.Modal(c, &a.editorOpen, func() {
@@ -842,7 +866,8 @@ func (a *App) overviewView(c *ui.Context) {
 func (a *App) modelsView(c *ui.Context) {
 	ui.Row(c).Wrap().Gap(8).Children(func() {
 		ui.Button(c, "探活匿名模型").Disabled(a.busy != "").OnClick(a.probeAnonymousModels)
-		muted(c, "批量探活只调用匿名模型；付费与账号模型需单独验证。")
+		ui.Button(c, "清理失败模型").Disabled(a.busy != "").OnClick(a.prunePreview)
+		muted(c, "批量探活只调用匿名模型；付费与账号模型需单独验证。清理仅针对探活被确定性拒绝（401/402/403/404）的模型。")
 	})
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.SearchField(c, &a.modelFilter).Label("搜索模型").Grow(1)

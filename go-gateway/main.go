@@ -306,6 +306,8 @@ func main() {
 		admin.GET("/stats", adminHandler.HandleStats)
 		admin.GET("/stats/history", adminHandler.HandleStatsHistory)
 		admin.GET("/usage", adminHandler.HandleUsage)
+		modelsPruneHandler := handlers.NewModelsPruneHandler(router, reloader, configPath, logger)
+		admin.POST("/models/prune", modelsPruneHandler.HandlePrune)
 		gatewayKeyHandler := handlers.NewGatewayKeyHandler(gatewayKeys, logger)
 		admin.GET("/gateway-keys", gatewayKeyHandler.HandleList)
 		admin.POST("/gateway-keys", gatewayKeyHandler.HandleCreate)

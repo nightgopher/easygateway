@@ -65,6 +65,8 @@ type App struct {
 	marketInstalled                                                       []MarketInstalled
 	marketExpanded                                                        map[string]bool
 	modelPickerOpen                                                       bool
+	pruneOpen                                                             bool
+	pruneCandidates                                                       []PruneCandidate
 	modelPickerFilter                                                     string
 	modelPickerList                                                       ui.ListState
 	memories                                                              []Memory
