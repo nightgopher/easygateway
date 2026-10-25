@@ -95,7 +95,9 @@ func (h *SystemOneHandler) Handle(c *gin.Context) {
 		invalid(http.StatusBadRequest, err.Error())
 		return
 	}
-	setRequestMetadata(c, model, false)
+	if !setRequestMetadata(c, model, false) {
+		return
+	}
 	providers, err := h.router.Route(model)
 	if err != nil {
 		setProviderErrorHeaders(c, err)

@@ -17,7 +17,7 @@ func TestRequestIDPreservesSafeIncomingValueAndRecordsMetadata(t *testing.T) {
 	collector := metrics.NewCollector()
 	engine := gin.New()
 	engine.Use(RequestID())
-	engine.Use(Logging(log.New(io.Discard, "", 0), collector))
+	engine.Use(Logging(log.New(io.Discard, "", 0), collector, nil))
 	engine.POST("/v1/chat/completions", func(c *gin.Context) {
 		c.Set(requestmeta.ModelKey, "coding")
 		c.Set(requestmeta.ProviderKey, "glm")
@@ -67,7 +67,7 @@ func TestLoggingExcludesHealthChecksFromMetrics(t *testing.T) {
 	collector := metrics.NewCollector()
 	engine := gin.New()
 	engine.Use(RequestID())
-	engine.Use(Logging(log.New(io.Discard, "", 0), collector))
+	engine.Use(Logging(log.New(io.Discard, "", 0), collector, nil))
 	engine.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	response := httptest.NewRecorder()

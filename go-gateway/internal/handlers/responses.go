@@ -323,7 +323,9 @@ func (h *responsesHandler) Handle(c *gin.Context) {
 		}})
 		return
 	}
-	setRequestMetadata(c, req.Model, req.Stream)
+	if !setRequestMetadata(c, req.Model, req.Stream) {
+		return
+	}
 
 	// 检查是否走 ChatGPT 透传路径（Responses API 原生格式，不需要 Anthropic 转换）
 	if h.tryChatGPTPassthrough(c, &req, rawBody) {

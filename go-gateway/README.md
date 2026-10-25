@@ -199,6 +199,9 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 | `/admin/providers` | GET | 查看 Provider 运行状态、熔断状态和用量 |
 | `/admin/providers/:name` | PATCH | 设置 `{"enabled":true/false}`，运行时启停 Provider |
 | `/admin/providers/:name/reset` | POST | 手动重置熔断器 |
+| `/admin/gateway-keys` | GET / POST | 列出/创建 gateway key（列表只回 token 提示） |
+| `/admin/gateway-keys/:id` | PATCH / DELETE | 启停/删除 gateway key |
+| `/admin/gateway-keys/:id/rotate` | POST | 轮换 gateway key 的 token |
 | `/admin/providers/:name/health-check` | POST | 执行一次 Provider 健康探测 |
 | `/admin/routes` | GET | 查看模型的故障转移顺序 |
 | `/admin/routes/:model` | PUT | 用 `{"providers":[...]}` 调整同一链路的优先级 |
@@ -259,6 +262,15 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 - `?days=30`（默认 7，上限 400）或 `?from=YYYY-MM-DD&to=YYYY-MM-DD`（闭区间，跨度上限 400 天）；
 - 返回 `days`（按天序列，缺失日期补零，可直接画图）、`models`（按请求量排序，`provider` 为该模型用量最大的渠道）与 `providers` 排行；
 - 数据来自 SQLite `daily_stats` 按天聚合表，跨重启可查；该表独立于请求日志保留（默认 365 天，`STATS_RETENTION_DAYS` 可调），请求日志仍按 30 天清理。
+
+### Gateway Key 多密钥
+
+gateway key 是发给具体客户端（手机、他人设备、试验脚本）的受限身份，与 master key 分工：master key 是管理员身份（全部模型、无限量、可进 `/admin`），gateway key 进不了 `/admin`。存储为网关主目录的 `gateway-keys.json`（0600），不存在时行为与从前完全一致。
+
+- **创建**：`POST /admin/gateway-keys`，body `{"name": "phone", "allowed_models": ["glm-*", "coding"], "limits": {"day": 500000, "week": 2000000, "month": 20000000}}`；完整 token（`sk-gw-` 前缀）只在创建与轮换的响应里出现一次，列表只返回 `token_hint`。
+- **模型白名单**：`allowed_models` 用 glob；空白名单放行全部。不匹配的请求在路由前返回 403。
+- **token 限额**：`limits` 按本地自然日/周（周一起始）/自然月的固定窗口计数，跨重启保留；预算耗尽返回 429、`Retry-After` 与窗口名。先放行后计数，窗口内最后一个请求可能略微超出预算（不做中途截断）。
+- **管理**：列表/创建/轮换（旧 token 立即失效）/启停/删除；用量计数随列表可见。
 
 ### 用量成本统计
 
