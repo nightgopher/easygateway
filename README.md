@@ -9,6 +9,7 @@
 - **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动；同一渠道多账号在配额耗尽（429）时自动换号重试，全部耗尽才降级。
 - **用量成本**：daily_stats 按 input/output token 拆分落库，`GET /admin/usage` 按「模型 × 渠道」折算美元成本（单价在 providers.yaml 的 pricing 声明），未计价模型明确列出。
 - **多密钥**：gateway key 给每个客户端发独立密钥，支持模型白名单（glob）与按天/周/月的 token 限额，预算耗尽返回 429 与重置时间，Admin API 管理创建/轮换/停用/删除。
+- **快速接入**：`gateway provider add <preset> <key> --models ...` 一条命令接入 deepseek/moonshot/openrouter 等常见供应商（文本级插入 providers.yaml，注释不动，SIGHUP 热重载生效）。
 - **技能中心**：custom-skills 仓库清单同步（符号链接落盘），远端技能市场浏览、搜索、安装与卸载，全局与项目两级范围。
 - **记忆与助理**：跨客户端个人记忆层（candidate/active 治理、密钥守门）与流式常驻助理。
 - **归档与导出**：可控的完整对话归档（脱敏、限长、保留期清理），JSONL 增量导出供知识库消费。
@@ -132,7 +133,16 @@ llm-gateway setup pi --endpoint https://gateway.example.com/v1
 
 ### 添加新提供商
 
-无需修改代码！只需编辑 `providers.yaml` 文件：
+常见供应商用一条命令接入（flag 需放在位置参数之前）：
+
+```bash
+gateway provider presets                     # 查看内置 preset
+gateway provider add --models deepseek-chat,deepseek-reasoner deepseek sk-xxx
+```
+
+它会：把 preset 条目插入 `providers.yaml`（文本级插入，已有注释不动）→ 把 API Key 追加到同目录 `.env` → 提示热重载命令（`kill -HUP <pid>` 或 `POST /admin/config/reload`），无需重启。模型清单用 `--models` 显式给出，preset 不内置易过期的模型目录。
+
+也可以手动编辑 `providers.yaml` 文件：
 
 ```yaml
 providers:

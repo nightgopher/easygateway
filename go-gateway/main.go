@@ -32,6 +32,7 @@ import (
 	"github.com/nightgopher/easygateway/internal/middleware"
 	"github.com/nightgopher/easygateway/internal/piconfig"
 	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/providerpresets"
 	"github.com/nightgopher/easygateway/internal/storage"
 )
 
@@ -393,6 +394,8 @@ func runCommand(args []string) error {
 		return claudeCommand(args[1:])
 	case "codex":
 		return codexCommand(args[1:])
+	case "provider":
+		return providerCommand(args[1:])
 	case "migrate":
 		if len(args) < 2 || args[1] != "cc-switch" {
 			return fmt.Errorf("usage: llm-gateway migrate cc-switch [--home PATH] [--include a,b] [--dry-run]")
@@ -666,6 +669,122 @@ func defaultDshHome() string {
 		return ".dsh"
 	}
 	return filepath.Join(userHome, ".dsh")
+}
+
+// providerCommand 快速接入新供应商：
+//
+//	gateway provider presets                    列出内置 preset
+//	gateway provider add <preset> <key> --models m1,m2
+//
+// 写入 providers.yaml（文本级插入，注释不动）与同目录 .env，随后用
+// SIGHUP / POST /admin/config/reload 热重载即可生效，无需重启。
+func providerCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: llm-gateway provider <presets|add> ...")
+	}
+	switch args[0] {
+	case "presets":
+		for _, preset := range providerpresets.All() {
+			note := ""
+			if preset.Note != "" {
+				note = "  (" + preset.Note + ")"
+			}
+			fmt.Fprintf(os.Stdout, "%-14s %s  env: %s%s\n", preset.Name, preset.URL, preset.APIKeyEnv, note)
+		}
+		return nil
+	case "add":
+		return providerAddCommand(args[1:])
+	default:
+		return fmt.Errorf("unknown provider subcommand %q (presets | add)", args[0])
+	}
+}
+
+func providerAddCommand(args []string) error {
+	flags := flag.NewFlagSet("provider add", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	modelsRaw := flags.String("models", "", "Comma-separated model IDs to register (required)")
+	configPath := flags.String("config", "", "providers.yaml path (defaults to $LLM_GATEWAY_HOME/providers.yaml, then ./providers.yaml)")
+	dryRun := flags.Bool("dry-run", false, "Print the changes without writing them")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	rest := flags.Args()
+	if len(rest) != 2 {
+		return fmt.Errorf("usage: llm-gateway provider add <preset> <api-key> [--models m1,m2] [--config PATH] [--dry-run]")
+	}
+	preset, err := providerpresets.Lookup(rest[0])
+	if err != nil {
+		return err
+	}
+	models := splitAndTrim(*modelsRaw, ",")
+	if len(models) == 0 {
+		return fmt.Errorf("--models is required (comma-separated model IDs, e.g. --models %s-chat,%s-reasoner)", preset.Name, preset.Name)
+	}
+
+	path := resolveProvidersPath(*configPath)
+	if path == "" {
+		return fmt.Errorf("providers.yaml not found; pass --config PATH (the running gateway loads it from its working directory)")
+	}
+	config, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if providerpresets.HasProvider(string(config), preset.Name) {
+		return fmt.Errorf("provider %q already exists in %s", preset.Name, path)
+	}
+	block := providerpresets.RenderYAML(providerpresets.Options{Preset: preset, APIKey: rest[1], Models: models})
+	nextConfig := providerpresets.InsertIntoConfig(string(config), block)
+
+	envPath := filepath.Join(filepath.Dir(path), ".env")
+	env, err := os.ReadFile(envPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", envPath, err)
+	}
+	nextEnv := providerpresets.UpsertEnvFile(string(env), preset.APIKeyEnv, rest[1])
+
+	if *dryRun {
+		fmt.Fprintf(os.Stdout, "--- %s ---\n%s", path, nextConfig)
+		fmt.Fprintf(os.Stdout, "--- %s ---\n%s", envPath, nextEnv)
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(nextConfig), 0644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.WriteFile(envPath, []byte(nextEnv), 0600); err != nil {
+		return fmt.Errorf("write %s: %w", envPath, err)
+	}
+	fmt.Fprintf(os.Stdout, "Provider %s added: %s\n", preset.Name, path)
+	fmt.Fprintf(os.Stdout, "API key saved to %s (%s)\n", envPath, preset.APIKeyEnv)
+	fmt.Fprintf(os.Stdout, "Models: %s\n", strings.Join(models, ", "))
+	fmt.Fprintf(os.Stdout, "Apply without restart: kill -HUP <gateway pid> or POST /admin/config/reload\n")
+	return nil
+}
+
+// resolveProvidersPath 解析 providers.yaml 位置：显式 --config 优先，
+// 其次网关主目录，最后当前目录（运行中的网关从其工作目录加载）。
+func resolveProvidersPath(explicit string) string {
+	candidates := []string{}
+	if explicit != "" {
+		candidates = append(candidates, explicit)
+	} else {
+		candidates = append(candidates, filepath.Join(defaultGatewayHome(), "providers.yaml"), "providers.yaml")
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func splitAndTrim(raw, sep string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, sep) {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func defaultCCSwitchHome() string {
