@@ -293,6 +293,7 @@ func main() {
 		admin.POST("/ccswitch/remote-import", ccswitchHandler.HandleRemoteImport)
 		admin.GET("/stats", adminHandler.HandleStats)
 		admin.GET("/stats/history", adminHandler.HandleStatsHistory)
+		admin.GET("/usage", adminHandler.HandleUsage)
 		admin.GET("/archives", archiveHandler.HandleList)
 		admin.GET("/archives/export", archiveHandler.HandleExport)
 		admin.DELETE("/archives", archiveHandler.HandleDeleteBefore)

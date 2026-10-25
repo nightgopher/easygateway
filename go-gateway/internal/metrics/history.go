@@ -20,6 +20,10 @@ type DailyStatRow struct {
 	CacheCreationInputTokens int     `json:"cache_creation_input_tokens"`
 	CacheInputTokens         int     `json:"cache_input_tokens"`
 	CacheUsageRequests       int     `json:"cache_usage_requests"`
+	// InputTokens/OutputTokens 是 input/output 拆分（成本统计用）。列是后来
+	// 加的：升级前的历史行两列为 0，成本统计据 Priced 标记而非按 0 冒充。
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
 }
 
 // HistoryDay 趋势序列中的一天。

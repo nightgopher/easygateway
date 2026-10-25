@@ -6,6 +6,7 @@
 
 - **统一接入**：一个端点、一套密钥接入 Claude Code、Codex CLI、Pi 等所有 AI 应用；三协议兼容，支持流式、工具调用与多模态。
 - **能力调度**：按 text/vision 等能力选模型，多级模型链自动 fallback，健康检查与熔断恢复，请求级追踪与聚合指标。
+- **用量成本**：daily_stats 按 input/output token 拆分落库，`GET /admin/usage` 按「模型 × 渠道」折算美元成本（单价在 providers.yaml 的 pricing 声明），未计价模型明确列出。
 - **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动。
 - **技能中心**：custom-skills 仓库清单同步（符号链接落盘），远端技能市场浏览、搜索、安装与卸载，全局与项目两级范围。
 - **记忆与助理**：跨客户端个人记忆层（candidate/active 治理、密钥守门）与流式常驻助理。

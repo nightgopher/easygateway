@@ -30,17 +30,33 @@ type CapabilityProvider interface {
 	Capabilities() []string
 }
 
+// ModelPricing 是模型的单价（USD / 百万 token），由 providers.yaml 的模型条目
+// 声明，供用量成本统计计算。全部字段可省略：未配置单价的模型不计成本，
+// 统计里标记 priced=false，而不是按 0 冒充免费。
+type ModelPricing struct {
+	InputPerM      float64 `yaml:"input_per_m,omitempty" json:"input_per_m,omitempty"`
+	OutputPerM     float64 `yaml:"output_per_m,omitempty" json:"output_per_m,omitempty"`
+	CacheReadPerM  float64 `yaml:"cache_read_per_m,omitempty" json:"cache_read_per_m,omitempty"`
+	CacheWritePerM float64 `yaml:"cache_write_per_m,omitempty" json:"cache_write_per_m,omitempty"`
+}
+
+// Priced 报告是否配置了任何单价。
+func (p *ModelPricing) Priced() bool {
+	return p != nil && (p.InputPerM > 0 || p.OutputPerM > 0 || p.CacheReadPerM > 0 || p.CacheWritePerM > 0)
+}
+
 // ModelInfo is the public model registry entry returned by /v1/models.
 // The extra fields are additive to the OpenAI model object.
 type ModelInfo struct {
-	ID              string   `json:"id"`
-	Provider        string   `json:"provider,omitempty"`
-	Protocol        string   `json:"protocol,omitempty"`
-	Capabilities    []string `json:"capabilities"`
-	InputModalities []string `json:"input_modalities,omitempty"`
-	MaxInputTokens  int      `json:"max_input_tokens,omitempty"`
-	MaxOutputTokens int      `json:"max_output_tokens,omitempty"`
-	Description     string   `json:"description,omitempty"`
+	ID              string        `json:"id"`
+	Provider        string        `json:"provider,omitempty"`
+	Protocol        string        `json:"protocol,omitempty"`
+	Capabilities    []string      `json:"capabilities"`
+	InputModalities []string      `json:"input_modalities,omitempty"`
+	MaxInputTokens  int           `json:"max_input_tokens,omitempty"`
+	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
+	Description     string        `json:"description,omitempty"`
+	Pricing         *ModelPricing `json:"pricing,omitempty"`
 }
 
 // UnsupportedCapabilityError is a client error: the requested model exists,

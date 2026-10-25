@@ -47,15 +47,16 @@ func SetChannelProviderFactory(factory ChannelProviderFactory) {
 
 // ModelConfig 模型配置
 type ModelConfig struct {
-	ID              string   `yaml:"id"`
-	Aliases         []string `yaml:"aliases"`
-	ProviderName    string   `yaml:"provider_name,omitempty"` // 可选：自定义 provider 实例名，默认为模型 ID
-	Protocol        string   `yaml:"protocol,omitempty"`
-	Capabilities    []string `yaml:"capabilities,omitempty"`
-	InputModalities []string `yaml:"input_modalities,omitempty"`
-	MaxInputTokens  int      `yaml:"max_input_tokens,omitempty"`
-	MaxOutputTokens int      `yaml:"max_output_tokens,omitempty"`
-	Description     string   `yaml:"description,omitempty"` // 选型说明，经 /v1/models 暴露给客户端
+	ID              string        `yaml:"id"`
+	Aliases         []string      `yaml:"aliases"`
+	ProviderName    string        `yaml:"provider_name,omitempty"` // 可选：自定义 provider 实例名，默认为模型 ID
+	Protocol        string        `yaml:"protocol,omitempty"`
+	Capabilities    []string      `yaml:"capabilities,omitempty"`
+	InputModalities []string      `yaml:"input_modalities,omitempty"`
+	MaxInputTokens  int           `yaml:"max_input_tokens,omitempty"`
+	MaxOutputTokens int           `yaml:"max_output_tokens,omitempty"`
+	Description     string        `yaml:"description,omitempty"` // 选型说明，经 /v1/models 暴露给客户端
+	Pricing         *ModelPricing `yaml:"pricing,omitempty"`     // 单价（USD/百万 token），供用量成本统计
 }
 
 // ProvidersConfig 提供商配置文件
@@ -270,6 +271,7 @@ func RegisterProvidersFromConfig(router *Router, cfg *ProvidersConfig, logger in
 						MaxInputTokens:  mc.MaxInputTokens,
 						MaxOutputTokens: mc.MaxOutputTokens,
 						Description:     mc.Description,
+						Pricing:         mc.Pricing,
 					})
 					modelToProvider[modelName] = providerName
 				}
@@ -311,6 +313,7 @@ func RegisterProvidersFromConfig(router *Router, cfg *ProvidersConfig, logger in
 						MaxInputTokens:  mc.MaxInputTokens,
 						MaxOutputTokens: mc.MaxOutputTokens,
 						Description:     mc.Description,
+						Pricing:         mc.Pricing,
 					})
 					modelToProvider[modelName] = pc.Name
 				}
@@ -358,6 +361,7 @@ func RegisterProvidersFromConfig(router *Router, cfg *ProvidersConfig, logger in
 					MaxInputTokens:  mc.MaxInputTokens,
 					MaxOutputTokens: mc.MaxOutputTokens,
 					Description:     mc.Description,
+					Pricing:         mc.Pricing,
 				})
 			}
 
