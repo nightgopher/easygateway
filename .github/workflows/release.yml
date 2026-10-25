@@ -161,6 +161,8 @@ jobs:
           VERSION=$(python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
           mkdir -p ../desktop-release
           cp "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg" "../desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
+          # 签名更新包（应用内自更新）：有密钥才产出，缺失时跳过并提示。
+          find build.noindex/darwin-arm64 -maxdepth 2 \( -name 'update-*.json' -o -name 'EasyGateway-*.tar.gz' \) -exec cp {} ../desktop-release/ \; || true
       - name: Notarize the macOS DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -173,9 +175,6 @@ jobs:
           xcrun notarytool submit "$DMG" --keychain-profile "easygateway-notary" --wait
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
-          # 签名更新包（应用内自更新）：有密钥才产出，缺失时跳过并提示。
-          find build.noindex/darwin-arm64 -maxdepth 2 \( -name 'update-*.json' -o -name 'EasyGateway-*.tar.gz' \) -exec cp {} ../desktop-release/ \; || true
-          ls ../desktop-release/
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-darwin-arm64
