@@ -162,6 +162,9 @@ func BearerAuthWithGatewayKeys(masterKey, adminToken string, gatewayKeys *gwkeys
 					c.Next()
 					return
 				} else if reason == "disabled" {
+					// 停用密钥的尝试同样计入失败限流：持旧密钥者（离职协作者、
+					// 泄露的客户端）不应能无限次试探。
+					failures.recordFail(ip, now)
 					logger.Printf("Disabled gateway key used from %s", ip)
 					c.JSON(http.StatusUnauthorized, gin.H{"error": "Gateway key is disabled"})
 					c.Abort()
