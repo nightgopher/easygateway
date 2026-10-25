@@ -212,6 +212,7 @@ Admin API 和管理端至少支持：
 | 能力感知模型目录 | ✅ 已实现 | /v1/models 返回能力和输入模态 |
 | 多模态路由 | ✅ 已实现 | 纯文本 `glm-5.3` 与具备视觉能力的 `glm-5.3-flash` 区分 |
 | SQLite 指标 | ✅ 已实现 | request_logs、daily_stats |
+| gateway key 多密钥 | ✅ 已实现 | 模型白名单 + 日/周/月 token 限额 + Admin API 管理 |
 | 请求关联与 Provider 尝试记录 | ✅ 已实现 | `X-Request-ID`、最终 Provider、每次 fallback 尝试均进入轻量指标日志 |
 | Admin API | ✅ 已实现 | Provider、模型、路由、日志和统计 |
 | 原生桌面管理端 | ✅ 已实现 | desktop/，MyGo Go 原生控件 |

@@ -5,11 +5,13 @@ import (
 	"crypto/subtle"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nightgopher/easygateway/internal/gwkeys"
 )
 
 const (
@@ -85,7 +87,7 @@ func (f *failureLimiter) recentLocked(ip string, now time.Time) []time.Time {
 	return recent
 }
 
-// BearerAuth 创建 Bearer token 认证中间件
+// BearerAuth keeps the data-plane protected by the master key alone.
 func BearerAuth(masterKey string, logger *log.Logger) gin.HandlerFunc {
 	return BearerAuthWithAdminToken(masterKey, "", logger)
 }
@@ -94,7 +96,18 @@ func BearerAuth(masterKey string, logger *log.Logger) gin.HandlerFunc {
 // while allowing the separately configured admin token to reach /admin. The
 // admin group still runs AdminAuth afterwards, so this only changes the
 // outer gate and does not weaken non-admin endpoints.
+//
+// gatewayKeys 可为 nil：不启用多密钥。启用时，master key 校验失败的 token
+// 会继续尝试 gateway key：命中且启用即通过外层门（/admin 仍由 AdminAuth
+// 把守，gateway key 进不去），预算耗尽返回 429 与窗口重置时间，密钥身份
+// 写入 gin context（gwkeys.ContextKey）供模型白名单与用量记账使用。
 func BearerAuthWithAdminToken(masterKey string, adminToken string, logger *log.Logger) gin.HandlerFunc {
+	return BearerAuthWithGatewayKeys(masterKey, adminToken, nil, logger)
+}
+
+// BearerAuthWithGatewayKeys 在 BearerAuthWithAdminToken 基础上接入 gateway
+// key 多密钥体系（见 BearerAuthWithAdminToken 注释）。
+func BearerAuthWithGatewayKeys(masterKey, adminToken string, gatewayKeys *gwkeys.Store, logger *log.Logger) gin.HandlerFunc {
 	failures := newFailureLimiter(authFailureWindow, authFailureMax)
 	tooMany := func(c *gin.Context) {
 		logger.Printf("Too many failed auth attempts from %s", c.ClientIP())
@@ -129,6 +142,32 @@ func BearerAuthWithAdminToken(masterKey string, adminToken string, logger *log.L
 		}
 
 		if !secureTokenEqual(token, masterKey) {
+			if gatewayKeys != nil {
+				if key, ok, reason := gatewayKeys.Lookup(token); ok {
+					// 有效 gateway key：预算预检（最后一个请求可能略微超出，
+					// 先放行后计数，见 gwkeys 包注释）。
+					if state := gatewayKeys.Budget(key, time.Now()); !state.OK {
+						logger.Printf("Gateway key %s (%s) budget exhausted: %s window %d tokens", key.ID, key.Name, state.Window, state.Limit)
+						c.Header("Retry-After", strconv.Itoa(max(int(state.RetryAfter.Seconds())+1, 1)))
+						c.JSON(http.StatusTooManyRequests, gin.H{
+							"error":       "gateway key budget exhausted",
+							"window":      state.Window,
+							"reset_after": state.RetryAfter.Round(time.Second).String(),
+						})
+						c.Abort()
+						return
+					}
+					c.Set(gwkeys.ContextKey, key.ID)
+					c.Set(gwkeys.GuardContextKey, &gwkeys.Guard{AllowedModels: key.AllowedModels})
+					c.Next()
+					return
+				} else if reason == "disabled" {
+					logger.Printf("Disabled gateway key used from %s", ip)
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "Gateway key is disabled"})
+					c.Abort()
+					return
+				}
+			}
 			failures.recordFail(ip, now)
 			logger.Printf("Invalid token from %s", ip)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})

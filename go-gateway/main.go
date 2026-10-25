@@ -23,6 +23,7 @@ import (
 	"github.com/nightgopher/easygateway/internal/channel"
 	"github.com/nightgopher/easygateway/internal/config"
 	"github.com/nightgopher/easygateway/internal/corspolicy"
+	"github.com/nightgopher/easygateway/internal/gwkeys"
 	"github.com/nightgopher/easygateway/internal/handlers"
 	"github.com/nightgopher/easygateway/internal/memory"
 	"github.com/nightgopher/easygateway/internal/metrics"
@@ -159,9 +160,17 @@ func main() {
 
 	engine.Use(corsPolicy.Middleware())
 
+	// gateway key 多密钥体系：发给客户端的受限身份（模型白名单 + token 限额）。
+	// 文件不存在时为空集合，行为与从前一致；加载失败时禁用第二把锁并告警。
+	gatewayKeys, gkErr := gwkeys.Load(filepath.Join(defaultGatewayHome(), "gateway-keys.json"))
+	if gkErr != nil {
+		logger.Printf("Warning: gateway keys disabled: %v", gkErr)
+		gatewayKeys = nil
+	}
+
 	engine.Use(middleware.RequestID())
-	engine.Use(middleware.Logging(logger, collector))
-	engine.Use(auth.BearerAuthWithAdminToken(cfg.MasterKey, cfg.AdminToken, logger))
+	engine.Use(middleware.Logging(logger, collector, gatewayKeys))
+	engine.Use(auth.BearerAuthWithGatewayKeys(cfg.MasterKey, cfg.AdminToken, gatewayKeys, logger))
 
 	// 管理端点使用独立的 admin auth
 	adminAuth := auth.AdminAuth(cfg.MasterKey, cfg.AdminToken, logger)
@@ -293,6 +302,12 @@ func main() {
 		admin.POST("/ccswitch/remote-import", ccswitchHandler.HandleRemoteImport)
 		admin.GET("/stats", adminHandler.HandleStats)
 		admin.GET("/stats/history", adminHandler.HandleStatsHistory)
+		gatewayKeyHandler := handlers.NewGatewayKeyHandler(gatewayKeys, logger)
+		admin.GET("/gateway-keys", gatewayKeyHandler.HandleList)
+		admin.POST("/gateway-keys", gatewayKeyHandler.HandleCreate)
+		admin.POST("/gateway-keys/:id/rotate", gatewayKeyHandler.HandleRotate)
+		admin.PATCH("/gateway-keys/:id", gatewayKeyHandler.HandleSetEnabled)
+		admin.DELETE("/gateway-keys/:id", gatewayKeyHandler.HandleRemove)
 		admin.GET("/archives", archiveHandler.HandleList)
 		admin.GET("/archives/export", archiveHandler.HandleExport)
 		admin.DELETE("/archives", archiveHandler.HandleDeleteBefore)
