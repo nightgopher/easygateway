@@ -260,6 +260,16 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 - 返回 `days`（按天序列，缺失日期补零，可直接画图）、`models`（按请求量排序，`provider` 为该模型用量最大的渠道）与 `providers` 排行；
 - 数据来自 SQLite `daily_stats` 按天聚合表，跨重启可查；该表独立于请求日志保留（默认 365 天，`STATS_RETENTION_DAYS` 可调），请求日志仍按 30 天清理。
 
+### 用量成本统计
+
+`GET /admin/usage`（区间参数与 stats/history 相同，默认 30 天）把区间内的 token 用量按单价折算为美元成本，回答「这段时间每个模型/渠道花了多少钱」：
+
+- 返回 `rows`（「模型 × 渠道」维度，按成本降序）、`providers`（渠道维度汇总）、`total_cost_usd` 与 `unpriced_models`；
+- 单价在 `providers.yaml` 模型条目的 `pricing` 字段声明（`input_per_m` / `output_per_m` / `cache_read_per_m` / `cache_write_per_m`，USD / 百万 token），改价只改配置；`/v1/models` 与 `/admin/models` 会一并返回 `pricing`；
+- 计费口径：输入按 `input_per_m`、输出按 `output_per_m`、缓存读/写单独计价；上游把缓存读计入 input_tokens 时（OpenAI 风格），计费输入会扣掉缓存读避免双计，是「不高于标价」的保守估计；
+- 查找顺序先按请求模型名、再按渠道实例名：链别名（如 `coding`）借用其成员模型（即渠道实例）的单价折算；
+- 没有配置单价、或升级前没有 input/output 拆分的历史行，不计成本并列入 `unpriced_models`——`cost_usd: 0` 只表示「未知」，不表示免费。
+
 ### 对话归档与增量导出
 
 默认情况下网关只记录轻量指标（状态码、token、延迟），不存任何请求/响应正文。开启归档后会额外保存脱敏后的完整对话，用于知识库增量同步。
