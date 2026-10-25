@@ -29,7 +29,11 @@ func postWithAuth(ctx context.Context, client *http.Client, name, url string, cf
 			Message:    "channel has no credential; login required",
 		}
 	}
-	networkRetried, authRefreshed := false, false
+	networkRetried, authRefreshed, rateRotated := false, false, false
+	var usedToken string
+	if cfg.Auth != nil {
+		usedToken = cfg.Auth.BearerToken()
+	}
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
@@ -53,6 +57,21 @@ func postWithAuth(ctx context.Context, client *http.Client, name, url string, cf
 		}
 		if !authRefreshed && cfg.refreshAuth(ctx, resp.StatusCode) {
 			authRefreshed = true
+			if cfg.Auth != nil {
+				usedToken = cfg.Auth.BearerToken()
+			}
+			drainAndClose(resp.Body)
+			continue
+		}
+		// 429 先做渠道内账号轮转：同一订阅的多个账号额度独立，换号比重试同号
+		// 或直接降级到链上其他 provider 都更符合「配额耗尽切账号」的语义。
+		// 每个请求只轮转一次；换号后仍 429 则交给 provider 级熔断与链上降级。
+		if !rateRotated && resp.StatusCode == http.StatusTooManyRequests &&
+			cfg.rotateOnRateLimit(ctx, usedToken, resp.Header.Get("Retry-After")) {
+			rateRotated = true
+			if cfg.Auth != nil {
+				usedToken = cfg.Auth.BearerToken()
+			}
 			drainAndClose(resp.Body)
 			continue
 		}

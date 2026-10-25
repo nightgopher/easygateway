@@ -6,8 +6,8 @@
 
 - **统一接入**：一个端点、一套密钥接入 Claude Code、Codex CLI、Pi 等所有 AI 应用；三协议兼容，支持流式、工具调用与多模态。
 - **能力调度**：按 text/vision 等能力选模型，多级模型链自动 fallback，健康检查与熔断恢复，请求级追踪与聚合指标。
+- **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动；同一渠道多账号在配额耗尽（429）时自动换号重试，全部耗尽才降级。
 - **用量成本**：daily_stats 按 input/output token 拆分落库，`GET /admin/usage` 按「模型 × 渠道」折算美元成本（单价在 providers.yaml 的 pricing 声明），未计价模型明确列出。
-- **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动。
 - **技能中心**：custom-skills 仓库清单同步（符号链接落盘），远端技能市场浏览、搜索、安装与卸载，全局与项目两级范围。
 - **记忆与助理**：跨客户端个人记忆层（candidate/active 治理、密钥守门）与流式常驻助理。
 - **归档与导出**：可控的完整对话归档（脱敏、限长、保留期清理），JSONL 增量导出供知识库消费。
@@ -208,7 +208,26 @@ Provider、能力与 `coding` 降级链的配置见 [providers.yaml](go-gateway/
 
 ## 配置 Claude Code
 
-编辑 `~/.claude/settings.json`：
+推荐用接管命令（随时可一键还原接管前的原始配置）：
+
+```bash
+gateway claude coding      # 接管：settings.json 的 env 指向网关，模型 coding
+gateway claude status      # 查看当前接管状态
+gateway claude default     # 还原接管前的原始配置
+```
+
+接管只修改 `settings.json` 里的 4 个受管 env 键（`ANTHROPIC_BASE_URL` /
+`ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`），其余内容
+原样保留；首次接管自动保存键级快照，重复接管不覆盖快照。支持 `--dry-run`
+与 `--endpoint URL`（默认 `http://127.0.0.1:4001/v1`）。Codex CLI 同理：
+
+```bash
+gateway codex coding       # 接管：config.toml 指向网关 provider（未指定模型时默认 coding）
+gateway codex status
+gateway codex default      # 字节级还原接管前的 config.toml 原文（含注释）
+```
+
+手动配置等价于把 `~/.claude/settings.json` 的 env 写为：
 
 ```json
 {

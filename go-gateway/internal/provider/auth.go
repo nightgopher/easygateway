@@ -23,6 +23,26 @@ type AuthSource interface {
 	Refresh(ctx context.Context) bool
 }
 
+// accountRotator 是 AuthSource 的可选扩展（结构化实现，channel.Accounts 不
+// import provider）：请求撞上 429 配额限制时，先在渠道内换一个未耗尽的账号。
+// 返回 true 表示已切到新账号，调用方应重取令牌重试一次；false 表示没有可用
+// 账号，按原 429 走 provider 级配额熔断与链上降级。
+type accountRotator interface {
+	// OnRateLimited 记录 accessToken 对应账号的配额冷却（retryAfter 为上游
+	// Retry-After 原文，可为空），并尝试切到下一个未冷却账号。
+	OnRateLimited(ctx context.Context, accessToken, retryAfter string) bool
+}
+
+// rotateOnRateLimit 在 429 时尝试渠道内账号轮转。token 是本次请求实际使用的
+// 访问令牌：并发请求各自拿到 429 时，只有令牌匹配的账号会被标记冷却。
+func (c *Config) rotateOnRateLimit(ctx context.Context, token, retryAfter string) bool {
+	rotator, ok := c.Auth.(accountRotator)
+	if !ok {
+		return false
+	}
+	return rotator.OnRateLimited(ctx, token, retryAfter)
+}
+
 // staticAuth 用固定令牌实现 AuthSource，供测试与简单场景使用。
 type staticAuth struct {
 	mu    sync.RWMutex

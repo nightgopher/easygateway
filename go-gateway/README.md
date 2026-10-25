@@ -67,6 +67,8 @@ curl http://127.0.0.1:4001/v1/systemone \
 
 账号授权成功不代表上游模型有额度或可用，仍需实际调用验证。成功授权会重置该渠道对应 Provider 的熔断与历史探测状态，避免之前的缺少凭据错误阻止新账号调用。
 
+一个渠道可登录多个账号（重复登录即可追加）。请求收到 429 配额限制时，网关先在该渠道内自动切换到下一个未耗尽的账号并重试一次；全部账号都在冷却时才打开 Provider 级 429 熔断、走链上下一个 Provider。账号冷却优先采用上游 `Retry-After`（秒数或 HTTP 日期，截断到 1 秒至 24 小时），缺失时默认 5 分钟；冷却状态保存在内存中，重启后清零。`GET /admin/channels` 的账号摘要为每个账号提供 `rate_limited_until`，桌面端据此展示各账号的额度窗口。
+
 TRAE 渠道在 macOS 上可自动识别 `/Applications` 或 `~/Applications` 下已安装的 TRAE CN 客户端，读取安装包 `product.json` 中的客户端标识与版本，无需手动填写额外标识。非标准路径可用 `TRAE_CHANNEL_CLIENT_PRODUCT` 指定该文件；环境变量与 `trae-client.json` 仍优先。此识别不导入 IDE 的账号令牌，仍由用户在浏览器中为网关完成授权。国际版配置不会用于国内渠道。
 
 这些接口使用管理凭据鉴权：
@@ -97,6 +99,31 @@ llm-gateway setup pi --endpoint https://gateway.example.com/v1
 完成后在 Pi 的 `/model` 中选择 `llm-gateway/coding`。
 
 ### 3. 配置 Claude Code
+
+#### 接管命令（推荐）
+
+```bash
+gateway claude coding     # 接管：settings.json 的 env 指向网关，模型 coding
+gateway claude status     # 查看接管状态（端点、模型、快照是否存在）
+gateway claude default    # 还原接管前的原始 env 值
+gateway codex coding      # Codex CLI 接管（未指定模型时默认 coding）
+gateway codex default     # 字节级还原 config.toml 原文
+```
+
+两个命令都支持 `--endpoint URL`（默认按网关 `.env` 的 PORT 推断
+`http://127.0.0.1:4001/v1`）与 `--dry-run`（打印将写入的内容，不落盘）。
+
+- Claude Code：只修改 `settings.json` 里 4 个受管 env 键
+  （`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` /
+  `ANTHROPIC_MODEL`），其余内容（modelPicker 等）原样保留；首次接管保存
+  键级快照 `settings.json.easygateway-bak`，重复接管不覆盖快照，
+  `default` 按快照精确还原（原本不存在的键删除、原本没有 settings.json
+  则删除该文件）。
+- Codex CLI：写入顶层 `model_provider` / `model` 与
+  `[model_providers.easygateway]`（wire_api 用网关的 Responses 端点），
+  既有 provider 条目保留；快照是整文件字节备份，`default` 一字不差地还原
+  原文（含注释）。接管期间的写盘可能丢失 config.toml 中的注释，介意者用
+  `--dry-run` 预览。
 
 #### Anthropic 兼容客户端
 
@@ -691,6 +718,12 @@ curl -X POST http://localhost:4001/v1/messages \
 ```
 
 ### 配置 Claude Code（远程）
+
+远程网关把 base URL 换成网关地址即可，或直接用接管命令加 `--endpoint`：
+
+```bash
+gateway claude coding --endpoint https://gateway.example.com/v1
+```
 
 ```json
 {
