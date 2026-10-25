@@ -151,7 +151,7 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security list-keychain -d user -s build.keychain login.keychain
-          rm certificate.p12 AppleWWDRCAG3.cer DeveloperIDG2CA.cer
+          rm certificate.p12
       - name: Build desktop installer
         working-directory: desktop
         env:
