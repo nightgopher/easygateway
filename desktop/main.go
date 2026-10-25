@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/locales/zh-Hans"
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 	"github.com/nightgopher/easygateway/desktop/internal/connection"
 	"github.com/nightgopher/easygateway/desktop/internal/console"
@@ -17,6 +18,9 @@ import (
 )
 
 func main() {
+	// 应用内自更新：检查/下载/安装来自 GitHub Release 的签名更新包
+	//（清单与 easygateway 网关共用同一把 Ed25519 密钥）。
+	mygo.Use(updater.Plugin)
 	app := mygo.App
 	app.SetLanguages("zh-Hans", "en")
 	app.SetName("EasyGateway")
@@ -67,7 +71,7 @@ func main() {
 	app.OnActivate(func(bool) { show() })
 	app.OnSecondInstance(func([]string, string) { show() })
 	app.WhenReady(func() {
-		app.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Role: mygo.RoleAppMenu}, {Role: mygo.RoleEditMenu}, {Label: "网关", Submenu: []*mygo.MenuItem{{Label: "显示控制台", Accelerator: "CmdOrCtrl+1", Click: func(*mygo.MenuItem, *mygo.Window) { show() }}, {Label: "管理连接…", Accelerator: "CmdOrCtrl+,", Click: connections}}}, {Role: mygo.RoleViewMenu}, {Role: mygo.RoleWindowMenu}}))
+		app.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Role: mygo.RoleAppMenu}, {Label: "应用", Submenu: []*mygo.MenuItem{updater.MenuItem()}}, {Role: mygo.RoleEditMenu}, {Label: "网关", Submenu: []*mygo.MenuItem{{Label: "显示控制台", Accelerator: "CmdOrCtrl+1", Click: func(*mygo.MenuItem, *mygo.Window) { show() }}, {Label: "管理连接…", Accelerator: "CmdOrCtrl+,", Click: connections}}}, {Role: mygo.RoleViewMenu}, {Role: mygo.RoleWindowMenu}}))
 		tray, err := mygo.NewTray(mygo.TrayOptions{Icon: trayIcon(), IconIsTemplate: true, ToolTip: "Gateway · 网关管理", Menu: mygo.NewMenu([]*mygo.MenuItem{{Label: "打开 Gateway", Click: func(*mygo.MenuItem, *mygo.Window) { show() }}, {Label: "管理连接…", Click: connections}, mygo.Separator(), {Role: mygo.RoleQuit}})})
 		if err != nil {
 			log.Printf("托盘不可用: %v", err)
