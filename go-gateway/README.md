@@ -100,6 +100,31 @@ llm-gateway setup pi --endpoint https://gateway.example.com/v1
 
 ### 3. 配置 Claude Code
 
+#### 接管命令（推荐）
+
+```bash
+gateway claude coding     # 接管：settings.json 的 env 指向网关，模型 coding
+gateway claude status     # 查看接管状态（端点、模型、快照是否存在）
+gateway claude default    # 还原接管前的原始 env 值
+gateway codex coding      # Codex CLI 接管（未指定模型时默认 coding）
+gateway codex default     # 字节级还原 config.toml 原文
+```
+
+两个命令都支持 `--endpoint URL`（默认按网关 `.env` 的 PORT 推断
+`http://127.0.0.1:4001/v1`）与 `--dry-run`（打印将写入的内容，不落盘）。
+
+- Claude Code：只修改 `settings.json` 里 4 个受管 env 键
+  （`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` /
+  `ANTHROPIC_MODEL`），其余内容（modelPicker 等）原样保留；首次接管保存
+  键级快照 `settings.json.easygateway-bak`，重复接管不覆盖快照，
+  `default` 按快照精确还原（原本不存在的键删除、原本没有 settings.json
+  则删除该文件）。
+- Codex CLI：写入顶层 `model_provider` / `model` 与
+  `[model_providers.easygateway]`（wire_api 用网关的 Responses 端点），
+  既有 provider 条目保留；快照是整文件字节备份，`default` 一字不差地还原
+  原文（含注释）。接管期间的写盘可能丢失 config.toml 中的注释，介意者用
+  `--dry-run` 预览。
+
 #### Anthropic 兼容客户端
 
 编辑 `~/.claude/settings.json`：
@@ -683,6 +708,12 @@ curl -X POST http://localhost:4001/v1/messages \
 ```
 
 ### 配置 Claude Code（远程）
+
+远程网关把 base URL 换成网关地址即可，或直接用接管命令加 `--endpoint`：
+
+```bash
+gateway claude coding --endpoint https://gateway.example.com/v1
+```
 
 ```json
 {

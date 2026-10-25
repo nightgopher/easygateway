@@ -225,7 +225,7 @@ Admin API 和管理端至少支持：
 | 常驻助理（R9） | ✅ 已实现 | SSE 流式、记忆工具、人设热更新与反馈 |
 | 技能同步 | ✅ 已实现 | custom-skills 清单管理与符号链接落盘 |
 | 技能市场 | ✅ 已实现 | 远端商城浏览、搜索、安装与卸载；安装目录与 EasyAgent 共用 |
-| 客户端模型同步 | ✅ 已实现 | Pi、ZCode、deepseek-harness 配置写入 |
+| 客户端模型同步 | ✅ 已实现 | Pi、ZCode、deepseek-harness 配置写入；Claude Code / Codex CLI 接管与一键还原（键级/字节级快照） |
 | 多源统一检索 | ✅ 已实现 | 由 hwj-wiki openwiki 连接器提供只读检索 |
 
 ## 8. 验收标准
