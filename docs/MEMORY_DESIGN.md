@@ -85,7 +85,7 @@
 
 ## 7. 常驻助理（v1.1 已实现）
 
-网关内嵌一个基于 EasyAgent SDK（`github.com/hwj123hwj/easyagent/sdk`）的常驻智能体，
+网关内嵌一个基于 EasyAgent SDK（`github.com/nightgopher/easyagent/sdk`）的常驻智能体，
 端点 `POST /admin/assistant/chat`（Admin Token，SSE 流式）。
 
 成功完成返回 `done`；上游缺少完成标记就断开，或发送显式业务错误时，
