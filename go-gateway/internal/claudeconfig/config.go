@@ -231,6 +231,11 @@ func parseSettings(raw []byte) (map[string]any, error) {
 			return nil, fmt.Errorf("parse Claude settings.json: %w", err)
 		}
 	}
+	// JSON null 会把 map 置 nil（合法 JSON、病态配置），统一回退为空对象，
+	// 否则后续 document["env"] 赋值会 panic。
+	if document == nil {
+		document = map[string]any{}
+	}
 	return document, nil
 }
 

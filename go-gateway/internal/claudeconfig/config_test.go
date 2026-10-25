@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -166,5 +167,20 @@ func TestReadStatus(t *testing.T) {
 	}
 	if status.Model != "coding" {
 		t.Fatalf("model = %s", status.Model)
+	}
+}
+
+// settings.json 内容为 JSON null（合法 JSON）时不得 panic，按空配置处理。
+func TestParseSettingsNull(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(SettingsPath(home), []byte("null"), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	content, _, err := Takeover(Options{ClaudeHome: home, Endpoint: "http://127.0.0.1:4001/v1", MasterKey: "sk-gw"})
+	if err != nil {
+		t.Fatalf("takeover on null settings: %v", err)
+	}
+	if !strings.Contains(string(content), "ANTHROPIC_BASE_URL") {
+		t.Fatalf("null 配置应按空对象接管:\\n%s", content)
 	}
 }
