@@ -66,6 +66,22 @@ func AggregateUsage(rows []DailyStatRow, priceOf func(key string) *provider.Mode
 	unpriced := make(map[string]bool)
 
 	for _, r := range rows {
+		// 空模型名的行只进渠道汇总，不单列模型行（与 stats/history 的
+		// 模型排行口径一致）。
+		if r.Model == "" {
+			if r.Provider != "" {
+				agg, ok := byProvider[r.Provider]
+				if !ok {
+					agg = &providerAgg{}
+					agg.row.Provider = r.Provider
+					byProvider[r.Provider] = agg
+				}
+				agg.row.Requests += r.Requests
+				agg.row.InputTokens += int64(r.InputTokens)
+				agg.row.OutputTokens += int64(r.OutputTokens)
+			}
+			continue
+		}
 		row, ok := byModel[r.Model+"/"+r.Provider]
 		if !ok {
 			row = &UsageRow{Model: r.Model, Provider: r.Provider}
