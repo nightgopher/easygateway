@@ -199,6 +199,7 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 | `/admin/providers` | GET | 查看 Provider 运行状态、熔断状态和用量 |
 | `/admin/providers/:name` | PATCH | 设置 `{"enabled":true/false}`，运行时启停 Provider |
 | `/admin/providers/:name/reset` | POST | 手动重置熔断器 |
+| `/admin/models/prune` | POST | 清理探活确定性失败的模型（编辑 providers.yaml + 热重载） |
 | `/admin/gateway-keys` | GET / POST | 列出/创建 gateway key（列表只回 token 提示） |
 | `/admin/gateway-keys/:id` | PATCH / DELETE | 启停/删除 gateway key |
 | `/admin/gateway-keys/:id/rotate` | POST | 轮换 gateway key 的 token |
@@ -262,6 +263,15 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 - `?days=30`（默认 7，上限 400）或 `?from=YYYY-MM-DD&to=YYYY-MM-DD`（闭区间，跨度上限 400 天）；
 - 返回 `days`（按天序列，缺失日期补零，可直接画图）、`models`（按请求量排序，`provider` 为该模型用量最大的渠道）与 `providers` 排行；
 - 数据来自 SQLite `daily_stats` 按天聚合表，跨重启可查；该表独立于请求日志保留（默认 365 天，`STATS_RETENTION_DAYS` 可调），请求日志仍按 30 天清理。
+
+### 清理失败模型
+
+`POST /admin/models/prune` 把**最近一次探活被上游确定性拒绝**（401/402/403/404：模型不存在、无权限、凭据失效、欠费）的模型从 `providers.yaml` 移除并热重载；桌面端「模型与路由」页提供「清理失败模型」按钮（先预览确认，再执行）。
+
+- 请求体 `{"dry_run": true}` 返回候选清单（`to_remove`，含渠道与失败原因），不改任何文件；`{"dry_run": false}` 执行，可选 `"models": [...]` 只清理子集；
+- 判据保守：429/5xx/网络抖动（degraded）与从未探活的模型绝不参与清理；候选之外的模型一律拒绝（422），健康模型删不掉；
+- providers.yaml 做文本级手术（注释与键序保留）：模型条目与其说明注释移除，模型清空的 provider 整块移除，`chains` 里指向已删模型的引用同步清理（变空的链会如实上报 `chains_affected`）；
+- 落盘前先经真实加载器解析验证，原配置备份到 `providers.yaml.prune-bak`；热重载失败自动回滚备份，磁盘与运行时始终一致。
 
 ### Gateway Key 多密钥
 

@@ -218,6 +218,7 @@ Admin API 和管理端至少支持：
 | SQLite 指标 | ✅ 已实现 | request_logs、daily_stats |
 | 用量成本统计 | ✅ 已实现 | input/output 拆分落库 + `GET /admin/usage`（providers.yaml pricing 单价） |
 | gateway key 多密钥 | ✅ 已实现 | 模型白名单 + 日/周/月 token 限额 + Admin API 管理 |
+| 失败模型清理 | ✅ 已实现 | 探活确定性拒绝的模型一键移除（预览确认 + 备份 + 热重载） |
 | 请求关联与 Provider 尝试记录 | ✅ 已实现 | `X-Request-ID`、最终 Provider、每次 fallback 尝试均进入轻量指标日志 |
 | Admin API | ✅ 已实现 | Provider、模型、路由、日志和统计 |
 | provider preset 快速接入 | ✅ 已实现 | `gateway provider add` 一条命令写 providers.yaml + .env，配合 SIGHUP 热重载 |
