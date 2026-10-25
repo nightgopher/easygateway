@@ -1,10 +1,11 @@
 {
   "name": "EasyGateway",
   "identifier": "com.hwj.llm-gateway.desktop",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "out": "build.noindex",
   "macos": {
-    "minimumSystemVersion": "13.0"
+    "minimumSystemVersion": "13.0",
+    "signingIdentity": "8AAD734656B383438D6DAC96D27580A561A1F85B"
   },
   "linux": {
     "maintainer": "weijian <weijian@example.com>",
