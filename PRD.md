@@ -112,6 +112,7 @@ Claude Code、Codex CLI、Pi 和后续应用只配置网关地址与 Key，不�
 - 支持健康检查；
 - 支持连续失败熔断和恢复探测；
 - 支持运行时启用、禁用和重置 Provider；
+- 账号渠道的请求收到 429 配额限制时，先在同渠道账号池内切换到未耗尽账号重试一次，全部账号耗尽才走 Provider 级冷却与链上降级；账号级配额冷却对管理端可见；
 - 记录最终 Provider 以及各次 Provider 尝试；
 - 不把一次用户请求的多次 fallback 误算成多次逻辑请求。
 
@@ -140,6 +141,8 @@ Admin API 和管理端至少支持：
 - fallback 和 Provider 尝试结果。
 
 指标日志与完整正文分开保存，不能依赖 stdout 作为唯一历史记录，也不能让指标表被大请求正文拖垮。
+
+成本维度：daily_stats 按 input/output token 拆分落库；按 providers.yaml 声明的单价折算美元成本，按「模型 × 渠道」与渠道维度输出；未配置单价的模型不计成本并明确列出，不按 0 冒充免费。
 
 ### R6：可控的完整对话归档
 
@@ -209,9 +212,11 @@ Admin API 和管理端至少支持：
 | 流式请求 | ✅ 已实现 | 三种协议均有实现 |
 | Provider 配置与模型链 | ✅ 已实现 | providers.yaml + 环境变量 |
 | fallback、健康和熔断 | ✅ 已实现 | 支持运行时控制 |
+| 429 渠道内账号轮转 | ✅ 已实现 | 多账号渠道配额耗尽自动换号，账号级冷却经 `GET /admin/channels` 摘要可见 |
 | 能力感知模型目录 | ✅ 已实现 | /v1/models 返回能力和输入模态 |
 | 多模态路由 | ✅ 已实现 | 纯文本 `glm-5.3` 与具备视觉能力的 `glm-5.3-flash` 区分 |
 | SQLite 指标 | ✅ 已实现 | request_logs、daily_stats |
+| 用量成本统计 | ✅ 已实现 | input/output 拆分落库 + `GET /admin/usage`（providers.yaml pricing 单价） |
 | gateway key 多密钥 | ✅ 已实现 | 模型白名单 + 日/周/月 token 限额 + Admin API 管理 |
 | 请求关联与 Provider 尝试记录 | ✅ 已实现 | `X-Request-ID`、最终 Provider、每次 fallback 尝试均进入轻量指标日志 |
 | Admin API | ✅ 已实现 | Provider、模型、路由、日志和统计 |
@@ -224,7 +229,7 @@ Admin API 和管理端至少支持：
 | 常驻助理（R9） | ✅ 已实现 | SSE 流式、记忆工具、人设热更新与反馈 |
 | 技能同步 | ✅ 已实现 | custom-skills 清单管理与符号链接落盘 |
 | 技能市场 | ✅ 已实现 | 远端商城浏览、搜索、安装与卸载；安装目录与 EasyAgent 共用 |
-| 客户端模型同步 | ✅ 已实现 | Pi、ZCode、deepseek-harness 配置写入 |
+| 客户端模型同步 | ✅ 已实现 | Pi、ZCode、deepseek-harness 配置写入；Claude Code / Codex CLI 接管与一键还原（键级/字节级快照） |
 | 多源统一检索 | ✅ 已实现 | 由 hwj-wiki openwiki 连接器提供只读检索 |
 
 ## 8. 验收标准
