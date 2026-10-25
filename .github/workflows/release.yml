@@ -156,9 +156,16 @@ jobs:
         working-directory: desktop
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           go run github.com/egoist/mygo/cmd/mygo build -platform darwin/arm64
           VERSION=$(python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
+          xcrun notarytool store-credentials "easygateway-notary" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
+          xcrun notarytool submit "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg" --keychain-profile "easygateway-notary" --wait
+          xcrun stapler staple "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg"
+          xcrun stapler validate "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg"
           mkdir -p ../desktop-release
           cp "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg" "../desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
           # 签名更新包（应用内自更新）：有密钥才产出，缺失时跳过并提示。
@@ -329,7 +336,7 @@ jobs:
           ${CHANGELOG}
 
           ### 下载
-          macOS 桌面包使用 ad-hoc 签名，尚未完成 Apple 公证。安装说明见 [桌面文档](https://github.com/nightgopher/easygateway/blob/${CURRENT_TAG}/desktop/README.md)。
+          macOS 桌面包已通过 Apple Developer ID 签名并完成公证，可直接安装。安装说明见 [桌面文档](https://github.com/nightgopher/easygateway/blob/${CURRENT_TAG}/desktop/README.md)。
 
           | 平台 | 文件 |
           |------|------|
