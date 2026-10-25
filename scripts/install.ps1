@@ -393,7 +393,7 @@ function New-GatewayConfig {
     $configLines = @(
         '# EasyGateway configuration'
         '# Gateway authentication token'
-        "LITELLM_MASTER_KEY=$masterKey"
+        "EASYGATEWAY_MASTER_KEY=$masterKey"
         ''
         '# Provider API keys'
         "GLM_API_KEY=$($providerUpdates['GLM_API_KEY'])"

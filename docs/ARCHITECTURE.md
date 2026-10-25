@@ -86,7 +86,7 @@ Admin API 是两者之间唯一的契约边界：网关不感知客户端的存�
 
 ## 6. 命名与版本
 
-- **产品名**：EasyGateway（2026-10-10 起），前身 litellm-gateway / LLM Gateway；
+- **产品名**：EasyGateway；
 - **版本线**：自 `v0.1.0` 重新开始，旧 `v1.x` 标签与 Release 已移除；
-- **兼容标识**：安装脚本默认仍使用 `gateway` / `llm-gateway`、`~/.llm-gateway`；`LLM_GATEWAY_HOME` 可覆盖安装根目录。仓库迷你主机安装器默认服务名为 `llm-gateway.service`，已迁移主机可使用不同单元与目录，须核实实际服务和更新器配置。macOS 脚本维护 `local.go-gateway`；`LITELLM_*` 环境变量和客户端 Provider 配置保留兼容，不依据产品改名擅自重命名运行入口；
+- **兼容标识**：安装脚本默认仍使用 `gateway` / `llm-gateway`、`~/.llm-gateway`；`LLM_GATEWAY_HOME` 可覆盖安装根目录。仓库迷你主机安装器默认服务名为 `llm-gateway.service`，已迁移主机可使用不同单元与目录，须核实实际服务和更新器配置。macOS 脚本维护 `local.go-gateway`；认证变量以 `EASYGATEWAY_MASTER_KEY` 为准（服务端兼容读取旧 `LITELLM_MASTER_KEY`），客户端 Provider 配置保留兼容，不依据产品改名擅自重命名运行入口；
 - **已完成更名**（2026-10-25）：GitHub 仓库为 `nightgopher/easygateway`，安装脚本 URL 与 Go module 路径（`github.com/nightgopher/easygateway`）均已更新。

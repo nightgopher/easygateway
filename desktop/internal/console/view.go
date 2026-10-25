@@ -373,7 +373,7 @@ func (a *App) editor(c *ui.Context) {
 					input(c, "连接名称", &a.editorName, "例如：本机网关")
 					input(c, "网关地址", &a.editorURL, "http://127.0.0.1:4001")
 					ui.Field(c, "管理 Token", func() {
-						ui.TextInput(c, &a.editorToken).Password().FillWidth().Placeholder("ADMIN_TOKEN / LITELLM_MASTER_KEY")
+						ui.TextInput(c, &a.editorToken).Password().FillWidth().Placeholder("ADMIN_TOKEN / EASYGATEWAY_MASTER_KEY")
 					})
 					if a.editorID != "" {
 						muted(c, "Token 留空保留已有值。填写新值即可替换。")

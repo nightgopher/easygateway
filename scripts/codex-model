@@ -1,6 +1,6 @@
 #!/bin/bash
 # Codex 模型切换脚本
-# 配合 litellm-gateway 使用，切换 Codex CLI 的模型配置
+# 配合 easygateway 使用，切换 Codex CLI 的模型配置
 #
 # 用法：
 #   codex-model gateway <模型>  → 走网关（默认模型 glm-opus）
@@ -18,18 +18,18 @@ set -e
 
 CODEX_CONFIG="$HOME/.codex/config.toml"
 CODEX_CONFIG_BAK="$HOME/.codex/config.toml.codex-model.bak"
-GATEWAY_KEY="${LITELLM_MASTER_KEY:-}"
+GATEWAY_KEY="${EASYGATEWAY_MASTER_KEY:-}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:4001/v1}"
 
 if [ -z "$GATEWAY_KEY" ]; then
-  ENV_FILE="$HOME/Desktop/develop/test/litellm-gateway/go-gateway/.env"
+  ENV_FILE="$HOME/Desktop/develop/test/easygateway/go-gateway/.env"
   if [ -f "$ENV_FILE" ]; then
-    GATEWAY_KEY=$(grep '^LITELLM_MASTER_KEY=' "$ENV_FILE" | cut -d'=' -f2-)
+    GATEWAY_KEY=$(grep -E '^(EASYGATEWAY|LITELLM)_MASTER_KEY=' "$ENV_FILE" | cut -d'=' -f2-)
   fi
 fi
 
 if [ -z "$GATEWAY_KEY" ]; then
-  echo "⚠️  未设置 GATEWAY_KEY，请设置 LITELLM_MASTER_KEY 环境变量或在 .env 中配置"
+  echo "⚠️  未设置 GATEWAY_KEY，请设置 EASYGATEWAY_MASTER_KEY 环境变量或在 .env 中配置"
   exit 1
 fi
 

@@ -109,7 +109,7 @@ try {
 
     $configText = [IO.File]::ReadAllText($configPath)
     Assert-True (
-        $configText -match '(?m)^LITELLM_MASTER_KEY=sk-[A-Za-z0-9]{32}$'
+        $configText -match '(?m)^EASYGATEWAY_MASTER_KEY=sk-[A-Za-z0-9]{32}$'
     ) 'installer should generate a 32-character master key'
     Assert-True (
         $configText -match '(?m)^PORT=4001$'
@@ -209,7 +209,7 @@ try {
         [Text.UTF8Encoding]::new($false)
     )
     $reconfigureConfig = @(
-        'LITELLM_MASTER_KEY=sk-existing-master-key'
+        'EASYGATEWAY_MASTER_KEY=sk-existing-master-key'
         'GLM_API_KEY=glm-existing-key'
         'PORT=4001'
         'LOG_LEVEL=debug'
@@ -251,7 +251,7 @@ try {
         (Join-Path $reconfigureRoot '.env')
     )
     Assert-True (
-        $reconfiguredText -match '(?m)^LITELLM_MASTER_KEY=sk-existing-master-key$'
+        $reconfiguredText -match '(?m)^EASYGATEWAY_MASTER_KEY=sk-existing-master-key$'
     ) 'reconfiguration should preserve the existing master key'
     Assert-True (
         $reconfiguredText -match '(?m)^GLM_API_KEY=glm-existing-key$'

@@ -36,11 +36,14 @@ func benchmarkModels(args []string) error {
 		return fmt.Errorf("endpoint must be an HTTP(S) base URL without credentials, query or fragment")
 	}
 	_ = godotenv.Load()
-	key := os.Getenv("LITELLM_MASTER_KEY")
+	key := os.Getenv("EASYGATEWAY_MASTER_KEY")
+	if key == "" {
+		key = os.Getenv("LITELLM_MASTER_KEY")
+	}
 	if key == "" {
 		key, err = piconfig.MasterKey(defaultGatewayHome())
 		if err != nil {
-			return fmt.Errorf("set LITELLM_MASTER_KEY or run from the gateway directory containing .env")
+			return fmt.Errorf("set EASYGATEWAY_MASTER_KEY or run from the gateway directory containing .env")
 		}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

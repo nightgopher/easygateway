@@ -1,5 +1,5 @@
 [Unit]
-Description=Check for a CI-verified LiteLLM Gateway update every ten minutes
+Description=Check for a CI-verified EasyGateway update every ten minutes
 
 [Timer]
 OnBootSec=2min

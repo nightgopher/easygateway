@@ -21,7 +21,7 @@ cp .env.example .env
 `.env` 最小配置：
 
 ```env
-LITELLM_MASTER_KEY=sk-local-gateway-xxx   # 必填，网关认证 token
+EASYGATEWAY_MASTER_KEY=sk-local-gateway-xxx   # 必填，网关认证 token（兼容旧变量名 LITELLM_MASTER_KEY）
 GLM_API_KEY=your_glm_key                  # 至少填一个 provider
 PORT=4001
 ```
@@ -48,7 +48,7 @@ Jev 使用独立的 JSON 协议：`POST /v1/systemone`（兼容别名 `/systemon
 
 ```bash
 curl http://127.0.0.1:4001/v1/systemone \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $EASYGATEWAY_MASTER_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"jev-1.13-free","state":"支付连续失败，客户无法下单。","questions":{"urgent":{"type":"noul","instructions":"是否需要紧急处理？"}}}'
 ```
@@ -165,7 +165,7 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 
 透传端点不做格式转换：请求/响应原样转发给模型所属 Provider；模型须在 `providers.yaml` 注册，Provider 的 `url` 配上游源站，网关在其后拼接端点路径。
 
-管理面板（使用 `ADMIN_TOKEN`，未配置时回退到 `LITELLM_MASTER_KEY`）：
+管理面板（使用 `ADMIN_TOKEN`，未配置时回退到 `EASYGATEWAY_MASTER_KEY`）：
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
@@ -292,7 +292,7 @@ Provider 熔断默认在连续 3 次可重试上游失败后打开，30 秒后�
 
 默认按模型实例冷却。确实共用同一限流额度的 Provider，可在 `providers.yaml` 的 Provider 条目设置 `rate_limit_scope: channel`，使该条目所有模型共用 429 冷却；只在 429 时共享，普通失败仍按模型计数。`model` 或留空使用独立冷却。手动 reset 该组任意模型也会重置组的冷却。
 
-在含 `.env` 的网关目录运行（或设置 `LITELLM_MASTER_KEY`）：
+在含 `.env` 的网关目录运行（或设置 `EASYGATEWAY_MASTER_KEY`）：
 
 ```bash
 ./gateway benchmark --models coding --samples 3 --timeout 60s
@@ -483,7 +483,7 @@ Antigravity Provider 为知识飞轮的长请求设置了 900 秒。这个值只
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `LITELLM_MASTER_KEY` | 是 | — | 网关认证 token |
+| `EASYGATEWAY_MASTER_KEY` | 是 | — | 网关认证 token（兼容旧变量 `LITELLM_MASTER_KEY`） |
 | `GLM_API_KEY` | 否 | — | 智谱 API key |
 | `CLIPROXY_API_KEY` | 否 | — | 本机 CLIProxyAPI（Antigravity 反代）的静态 api-key |
 | `COPILOT_TOKEN` | 否 | — | GitHub Copilot token（短期有效，约 30 分钟） |
@@ -494,7 +494,7 @@ Antigravity Provider 为知识飞轮的长请求设置了 900 秒。这个值只
 | `CHATGPT_AUTH_FILE` | 否 | 自动查找 | ChatGPT/Pi OAuth `auth.json` 路径 |
 | `PORT` | 否 | 4001 | 监听端口 |
 | `LOG_LEVEL` | 否 | info | 日志级别 |
-| `ADMIN_TOKEN` | 否 | 使用 `LITELLM_MASTER_KEY` | 管理接口独立认证 token |
+| `ADMIN_TOKEN` | 否 | 使用 `EASYGATEWAY_MASTER_KEY` | 管理接口独立认证 token |
 | `CIRCUIT_FAILURE_THRESHOLD` | 否 | 3 | 连续可重试失败后打开熔断 |
 | `CIRCUIT_RECOVERY_SECONDS` | 否 | 30 | 打开后等待半开探测的秒数 |
 | `CIRCUIT_SUCCESS_THRESHOLD` | 否 | 1 | 半开状态连续成功后关闭熔断 |
@@ -594,7 +594,7 @@ make docker-run    # Docker Compose 启动
 该流程只需要迷你主机访问 GitHub 的出站 HTTPS，不配置 GitHub Secrets、部署私钥、入站端口或仓库 Runner。首次安装前，在 GitHub 创建只对本仓库开放、仅有 Actions Read 权限的 fine-grained token，并在主机终端隐藏输入：
 
 ```bash
-bash -c 'install -d -m 700 ~/.config/litellm-gateway; read -r -s -p "GitHub Actions read token: " EA_GITHUB_TOKEN; printf "\\n"; printf "%s" "$EA_GITHUB_TOKEN" > ~/.config/litellm-gateway/github-token; unset EA_GITHUB_TOKEN; chmod 600 ~/.config/litellm-gateway/github-token'
+bash -c 'install -d -m 700 ~/.config/easygateway; read -r -s -p "GitHub Actions read token: " EA_GITHUB_TOKEN; printf "\\n"; printf "%s" "$EA_GITHUB_TOKEN" > ~/.config/easygateway/github-token; unset EA_GITHUB_TOKEN; chmod 600 ~/.config/easygateway/github-token'
 ```
 
 令牌只用于读取 GitHub Actions API 元数据和成功 CI 生成的构建产物，保存在主机的独立权限文件中，不会进入服务环境变量、进程参数或日志。主机保留自己的 .env 和 provider 凭据。随后在主机上运行一次安装命令（此项目默认使用 Linux 用户 q 和 llm-gateway.service）：
@@ -602,7 +602,7 @@ bash -c 'install -d -m 700 ~/.config/litellm-gateway; read -r -s -p "GitHub Acti
     set -o pipefail
     curl --fail --silent --show-error https://api.github.com/repos/nightgopher/easygateway/contents/scripts/install-mini-gateway-updater.sh | python3 -c 'import base64,json,sys; print(base64.b64decode("".join(json.load(sys.stdin)["content"].split())).decode(), end="")' | bash
 
-如果从 Mac 执行，可通过 SSH 完成这次凭据录入和安装；后续检查、下载和重启均由主机本地 timer 完成，无需逐次 SSH。安装脚本不使用 sudo；配置文件位于 ~/.config/litellm-gateway/update.env。
+如果从 Mac 执行，可通过 SSH 完成这次凭据录入和安装；后续检查、下载和重启均由主机本地 timer 完成，无需逐次 SSH。安装脚本不使用 sudo；配置文件位于 ~/.config/easygateway/update.env。
 
 查看同步状态和最近日志：
 

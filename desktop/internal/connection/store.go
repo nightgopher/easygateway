@@ -125,7 +125,7 @@ func (s *Store) prepare(in Input) (storedProfile, error) {
 		}
 	}
 	if p.Token == "" {
-		return p, errors.New("请填写 ADMIN_TOKEN 或 LITELLM_MASTER_KEY")
+		return p, errors.New("请填写 ADMIN_TOKEN 或 EASYGATEWAY_MASTER_KEY")
 	}
 	return p, nil
 }

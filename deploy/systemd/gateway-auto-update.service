@@ -1,5 +1,5 @@
 [Unit]
-Description=Deploy the latest CI-verified LiteLLM Gateway main build
+Description=Deploy the latest CI-verified EasyGateway main build
 After=network-online.target
 
 [Service]

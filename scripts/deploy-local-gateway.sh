@@ -130,7 +130,7 @@ env = {
     "HOME": os.path.expanduser("~"),
     "PORT": str(port),
     "PI_GO_DATA_DIR": temp_data,
-    "LITELLM_MASTER_KEY": token,
+    "EASYGATEWAY_MASTER_KEY": token,
     "ADMIN_TOKEN": token,
 }
 if skills_repo:

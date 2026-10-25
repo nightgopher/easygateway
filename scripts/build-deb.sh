@@ -127,7 +127,7 @@ case "$1" in
             cat > "$ENV_FILE" <<EOT
 # EasyGateway 环境变量（首次安装自动生成）
 # 网关认证 token，客户端（如 Claude Code）连接时使用
-LITELLM_MASTER_KEY=${MASTER_KEY}
+EASYGATEWAY_MASTER_KEY=${MASTER_KEY}
 
 # 提供商 API Key（按需追加，参见 providers.yaml）
 # GLM_API_KEY=

@@ -190,7 +190,7 @@ if [ ! -f "${CONFIG_FILE}" ]; then
     cat > "${CONFIG_FILE}" << EOF
 # EasyGateway 配置文件
 # 网关认证 token（自动生成，用于 Claude Code 等客户端连接）
-LITELLM_MASTER_KEY=${MASTER_KEY}
+EASYGATEWAY_MASTER_KEY=${MASTER_KEY}
 
 # 提供商 API Key（按需填写）
 GLM_API_KEY=${GLM_KEY}
@@ -220,7 +220,7 @@ echo -e "     编辑 ~/.claude/settings.json："
 echo -e "     ${CYAN}{"
 echo -e "       \"env\": {"
 echo -e "         \"ANTHROPIC_BASE_URL\": \"http://localhost:4001/v1\","
-echo -e "         \"ANTHROPIC_AUTH_TOKEN\": \"你的 LITELLM_MASTER_KEY\""
+echo -e "         \"ANTHROPIC_AUTH_TOKEN\": \"你的 EASYGATEWAY_MASTER_KEY\""
 echo -e "       }"
 echo -e "     }${NC}"
 echo ""

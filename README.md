@@ -1,6 +1,6 @@
 # EasyGateway
 
-个人 AI 基础设施网关，用 Go 编写（前身 litellm-gateway / LLM Gateway）：把所有 AI 应用接到一个统一入口，按模型能力调度多个提供商，并提供原生桌面管理端、账号渠道、技能市场、记忆与常驻助理。对外支持 OpenAI Chat Completions、Anthropic Messages、OpenAI Responses API 三套协议，自动 fallback 与熔断恢复。
+个人 AI 基础设施网关，用 Go 编写：把所有 AI 应用接到一个统一入口，按模型能力调度多个提供商，并提供原生桌面管理端、账号渠道、技能市场、记忆与常驻助理。对外支持 OpenAI Chat Completions、Anthropic Messages、OpenAI Responses API 三套协议，自动 fallback 与熔断恢复。
 
 ## 核心功能
 
@@ -41,7 +41,7 @@ Debian、Ubuntu 及其衍生发行版可以直接安装 Release 附带的 .deb �
 
 ```bash
 # 从最新 Release 下载并安装服务端（自动注册 systemd 服务并生成随机 Master Key）
-curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/easygateway/releases/latest/download/easygateway-server_0.3.14-1_amd64.deb
+curl -fsSL -o easygateway-server.deb https://github.com/nightgopher/easygateway/releases/latest/download/easygateway-server_0.3.15-1_amd64.deb
 sudo dpkg -i easygateway-server.deb || sudo apt-get install -f
 ```
 
@@ -68,7 +68,7 @@ sudo dpkg --purge easygateway-server   # 卸载并清除全部数据
 桌面管理端从 v0.3.7 起提供 Linux 包（amd64 / arm64），安装后出现在应用菜单，命令行入口为 `easygateway-desktop`。桌面端只管理网关，不自带网关进程；运行需要 GTK3 与 WebKitGTK 4.1（包依赖已声明）：
 
 ```bash
-curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/easygateway/releases/latest/download/easygateway_0.3.14_amd64.deb
+curl -fsSL -o easygateway-desktop.deb https://github.com/nightgopher/easygateway/releases/latest/download/easygateway_0.3.15_amd64.deb
 sudo dpkg -i easygateway-desktop.deb || sudo apt-get install -f
 ```
 
@@ -213,7 +213,7 @@ Provider、能力与 `coding` 降级链的配置见 [providers.yaml](go-gateway/
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:4001/v1",
-    "ANTHROPIC_AUTH_TOKEN": "你的 LITELLM_MASTER_KEY"
+    "ANTHROPIC_AUTH_TOKEN": "你的 EASYGATEWAY_MASTER_KEY"
   }
 }
 ```
@@ -282,7 +282,7 @@ easygateway/
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `LITELLM_MASTER_KEY` | 是 | 网关认证 token |
+| `EASYGATEWAY_MASTER_KEY` | 是 | 网关认证 token（兼容旧变量 `LITELLM_MASTER_KEY`） |
 | `GLM_API_KEY` | 否 | 智谱 API key |
 | `CLIPROXY_API_KEY` | 否 | 本机 CLIProxyAPI（Antigravity 反代）的静态 api-key |
 | `COPILOT_TOKEN` | 否 | GitHub Copilot token（短期有效，约 30 分钟） |

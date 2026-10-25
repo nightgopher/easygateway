@@ -52,7 +52,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Port:                        getEnvInt("PORT", 4001),
 		LogLevel:                    getEnv("LOG_LEVEL", "info"),
-		MasterKey:                   getEnv("LITELLM_MASTER_KEY", ""),
+		MasterKey:                   getEnvAny("EASYGATEWAY_MASTER_KEY", "LITELLM_MASTER_KEY"),
 		AdminToken:                  getEnv("ADMIN_TOKEN", ""),
 		GLMAPIKey:                   getEnv("GLM_API_KEY", ""),
 		CopilotToken:                getEnv("COPILOT_TOKEN", ""),
@@ -82,10 +82,21 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.MasterKey == "" {
-		return nil, fmt.Errorf("LITELLM_MASTER_KEY is required")
+		return nil, fmt.Errorf("EASYGATEWAY_MASTER_KEY (or the legacy LITELLM_MASTER_KEY alias) is required")
 	}
 
 	return cfg, nil
+}
+
+// getEnvAny returns the first non-empty variable among keys. The legacy
+// LITELLM_MASTER_KEY alias keeps pre-rename deployments authenticating.
+func getEnvAny(keys ...string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

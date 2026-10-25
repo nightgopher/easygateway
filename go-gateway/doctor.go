@@ -37,12 +37,15 @@ func doctorCommand(args []string) error {
 	_ = godotenv.Load()
 	key := os.Getenv("ADMIN_TOKEN")
 	if key == "" {
+		key = os.Getenv("EASYGATEWAY_MASTER_KEY")
+	}
+	if key == "" {
 		key = os.Getenv("LITELLM_MASTER_KEY")
 	}
 	if key == "" {
 		key, err = piconfig.MasterKey(defaultGatewayHome())
 		if err != nil {
-			return fmt.Errorf("set ADMIN_TOKEN or LITELLM_MASTER_KEY, or run from the gateway directory containing .env")
+			return fmt.Errorf("set ADMIN_TOKEN or EASYGATEWAY_MASTER_KEY, or run from the gateway directory containing .env")
 		}
 	}
 	body, _ := json.Marshal(map[string]bool{"probe_anonymous": *probe})
