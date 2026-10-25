@@ -149,10 +149,6 @@ jobs:
           KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          curl -fsSL -o AppleWWDRCAG3.cer "https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer"
-          curl -fsSL -o DeveloperIDG2CA.cer "https://developer.apple.com/certificationauthority/DeveloperIDG2CA.cer"
-          security import AppleWWDRCAG3.cer -k build.keychain
-          security import DeveloperIDG2CA.cer -k build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security list-keychain -d user -s build.keychain login.keychain
           rm certificate.p12 AppleWWDRCAG3.cer DeveloperIDG2CA.cer
