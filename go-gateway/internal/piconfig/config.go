@@ -98,9 +98,12 @@ func MasterKey(gatewayHome string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read gateway .env: %w", err)
 	}
-	key := strings.TrimSpace(values["LITELLM_MASTER_KEY"])
+	key := strings.TrimSpace(values["EASYGATEWAY_MASTER_KEY"])
 	if key == "" {
-		return "", fmt.Errorf("LITELLM_MASTER_KEY is missing from gateway .env")
+		key = strings.TrimSpace(values["LITELLM_MASTER_KEY"])
+	}
+	if key == "" {
+		return "", fmt.Errorf("EASYGATEWAY_MASTER_KEY is missing from gateway .env")
 	}
 	return key, nil
 }
@@ -132,6 +135,12 @@ func gatewayProvider(endpoint, tokenCommand string) map[string]any {
 		},
 		"models": DesiredModels(),
 	}
+}
+
+// ResolveEndpoint 把显式 --endpoint 规范化为网关 v1 地址；未提供时按网关
+// .env 的 PORT 推断本机地址。setup pi 与 claude/codex 接管共用。
+func ResolveEndpoint(endpoint, gatewayHome string) (string, error) {
+	return resolveEndpoint(endpoint, gatewayHome)
 }
 
 func resolveEndpoint(endpoint, gatewayHome string) (string, error) {

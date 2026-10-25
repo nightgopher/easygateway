@@ -207,7 +207,26 @@ Provider、能力与 `coding` 降级链的配置见 [providers.yaml](go-gateway/
 
 ## 配置 Claude Code
 
-编辑 `~/.claude/settings.json`：
+推荐用接管命令（随时可一键还原接管前的原始配置）：
+
+```bash
+gateway claude coding      # 接管：settings.json 的 env 指向网关，模型 coding
+gateway claude status      # 查看当前接管状态
+gateway claude default     # 还原接管前的原始配置
+```
+
+接管只修改 `settings.json` 里的 4 个受管 env 键（`ANTHROPIC_BASE_URL` /
+`ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`），其余内容
+原样保留；首次接管自动保存键级快照，重复接管不覆盖快照。支持 `--dry-run`
+与 `--endpoint URL`（默认 `http://127.0.0.1:4001/v1`）。Codex CLI 同理：
+
+```bash
+gateway codex coding       # 接管：config.toml 指向网关 provider（未指定模型时默认 coding）
+gateway codex status
+gateway codex default      # 字节级还原接管前的 config.toml 原文（含注释）
+```
+
+手动配置等价于把 `~/.claude/settings.json` 的 env 写为：
 
 ```json
 {
