@@ -245,7 +245,9 @@ func (h *openAIChatCompletionsHandler) Handle(c *gin.Context) {
 		return
 	}
 
-	setRequestMetadata(c, req.Model, req.Stream)
+	if !setRequestMetadata(c, req.Model, req.Stream) {
+		return
+	}
 
 	if req.Stream {
 		h.handleStream(c, providerReq, rawBody)

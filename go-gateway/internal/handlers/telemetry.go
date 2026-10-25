@@ -3,19 +3,32 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nightgopher/easygateway/internal/gwkeys"
 	"github.com/nightgopher/easygateway/internal/provider"
 	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
 const maxRequestErrorBytes = 512
 
-func setRequestMetadata(c *gin.Context, model string, stream bool) {
+// setRequestMetadata 记录请求元数据，并对 gateway key 请求做模型白名单
+// 校验。返回 false 表示请求已被拒绝（403 已写回、handler 须立即 return）；
+// 未携带 gateway key 的请求恒为 true。
+func setRequestMetadata(c *gin.Context, model string, stream bool) bool {
+	if value, ok := c.Get(gwkeys.GuardContextKey); ok {
+		if guard, ok := value.(*gwkeys.Guard); ok && !guard.ModelAllowed(model) {
+			c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("model %q is not allowed for this gateway key", model)})
+			c.Abort()
+			return false
+		}
+	}
 	c.Set(requestmeta.ModelKey, model)
 	c.Set(requestmeta.RequestIsStreamKey, stream)
+	return true
 }
 
 func setUsageMetadata(c *gin.Context, inputTokens, outputTokens int) {

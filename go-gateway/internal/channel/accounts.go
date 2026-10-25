@@ -3,6 +3,9 @@ package channel
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,6 +18,11 @@ const refreshLead = time.Hour
 // 后到的 Refresh 若发现该账号刚被续期过就直接复用，避免旧 refresh_token
 // 二次轮换把账号刷下线。
 const refreshCooldown = 30 * time.Second
+
+// defaultRateCooldown 是 429 未携带 Retry-After 时账号级配额冷却的默认时长。
+// 订阅类额度窗口多为分钟级，取 5 分钟：过短会在窗口内反复撞限流，过长会让
+// 已恢复的账号闲置。带合法 Retry-After 时以它为准（1s..24h 截断）。
+const defaultRateCooldown = 5 * time.Minute
 
 // refreshFn 对一个凭据执行一次续期并返回新凭据（不触碰存储）。
 type refreshFn func(ctx context.Context, cred Credential) (Credential, error)
@@ -34,12 +42,20 @@ type Accounts struct {
 	index     int
 	refreshMu sync.Mutex // 串行化令牌续期，避免并发双重刷新
 
-	lastRefresh map[string]time.Time // 账号级最近续期时间（冷却窗口用）
+	lastRefresh  map[string]time.Time // 账号级最近续期时间（冷却窗口用）
+	rateCooldown map[string]time.Time // 账号级配额冷却截止时间（429 轮转用）
 }
 
 // NewAccounts 构造账号池并立即从存储载入已有凭据。
 func NewAccounts(channel string, store *Store, client *oauthClient, refresh refreshFn) *Accounts {
-	a := &Accounts{channel: channel, store: store, client: client, refresh: refresh, lastRefresh: make(map[string]time.Time)}
+	a := &Accounts{
+		channel:      channel,
+		store:        store,
+		client:       client,
+		refresh:      refresh,
+		lastRefresh:  make(map[string]time.Time),
+		rateCooldown: make(map[string]time.Time),
+	}
 	a.reload()
 	return a
 }
@@ -114,6 +130,9 @@ func (a *Accounts) Credentials() []credentialSummary {
 		if !cred.ExpiresAt.IsZero() {
 			summary.ExpiresAt = cred.ExpiresAt.UTC().Format(time.RFC3339)
 		}
+		if until, ok := a.rateCooldown[a.accountKey(*cred)]; ok && until.After(now) {
+			summary.RateLimitedUntil = until.UTC().Format(time.RFC3339)
+		}
 		out = append(out, summary)
 	}
 	return out
@@ -127,6 +146,7 @@ type credentialSummary struct {
 	ExpiresAt        string `json:"expires_at,omitempty"`
 	Expired          bool   `json:"expired"`
 	RefreshAvailable bool   `json:"refresh_available"`
+	RateLimitedUntil string `json:"rate_limited_until,omitempty"`
 }
 
 // Refresh 实现 AuthSource：当前账号临近过期或已过期时续期一次。
@@ -233,6 +253,80 @@ func (a *Accounts) advance() {
 	}
 }
 
+// OnRateLimited 实现 provider 层的账号轮转协议（结构化鸭子类型，provider 侧用
+// accountRotator 断言，channel 包不 import provider）：请求撞上 429 后，先在
+// 渠道内换一个配额未耗尽的账号，而不是立刻降级到链上其他 provider。
+//
+// accessToken 是本次请求实际使用的令牌，只给它对应的账号记冷却——并发请求
+// 各自收到 429 时，不会把冷却错记到已被别的请求轮转到的账号头上。retryAfter
+// 是上游 Retry-After 原文（秒数或 HTTP 日期），可为空。
+//
+// 返回 true 表示已切到未冷却账号（调用方重取令牌重试一次）；false 表示全部
+// 账号都在冷却或没有多账号，由调用方按原 429 走 provider 级配额熔断。冷却状态
+// 只在内存中，进程重启即清零，由 provider 级熔断兜底。
+func (a *Accounts) OnRateLimited(_ context.Context, accessToken, retryAfter string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := time.Now()
+	if len(a.creds) == 0 {
+		return false
+	}
+	if key := a.accountKeyForTokenLocked(accessToken); key != "" {
+		until := now.Add(parseRetryAfter(retryAfter, now))
+		if prev, ok := a.rateCooldown[key]; !ok || prev.Before(until) {
+			a.rateCooldown[key] = until
+		}
+	}
+	if len(a.creds) == 1 {
+		return false
+	}
+	// 从当前位置起找下一个未冷却账号；绕一圈回到起点说明全部在冷却。
+	for step := 1; step < len(a.creds); step++ {
+		next := (a.index + step) % len(a.creds)
+		key := a.accountKey(a.creds[next])
+		if until, ok := a.rateCooldown[key]; ok && until.After(now) {
+			continue
+		}
+		a.index = next
+		return true
+	}
+	return false
+}
+
+// accountKeyForTokenLocked 按访问令牌反查账号键；令牌已不在池中（比如续期
+// 换新后被并发覆盖）时返回空串，调用方跳过记账只做轮转判定。调用方须持锁。
+func (a *Accounts) accountKeyForTokenLocked(token string) string {
+	if token == "" {
+		return ""
+	}
+	for i := range a.creds {
+		if a.creds[i].AccessToken == token {
+			return a.accountKey(a.creds[i])
+		}
+	}
+	return ""
+}
+
+// parseRetryAfter 解析 Retry-After 头（秒数或 HTTP 日期），返回冷却时长。
+// 无法解析时退回默认窗口；合法值截断到 [1s, 24h]，避免异常值把账号冻结一天
+// 以上。与 provider.CircuitBreaker.RecordRateLimitAt 的解析规则保持一致。
+func parseRetryAfter(raw string, now time.Time) time.Duration {
+	delay := defaultRateCooldown
+	trimmed := strings.TrimSpace(raw)
+	if seconds, err := strconv.ParseInt(trimmed, 10, 64); err == nil && seconds >= 0 {
+		delay = time.Duration(seconds) * time.Second
+	} else if date, err := http.ParseTime(trimmed); err == nil && date.After(now) {
+		delay = date.Sub(now)
+	}
+	if delay < time.Second {
+		delay = time.Second
+	}
+	if delay > 24*time.Hour {
+		delay = 24 * time.Hour
+	}
+	return delay
+}
+
 // replace 用续期后的凭据覆盖原凭据并落盘。
 func (a *Accounts) replace(old, next Credential) {
 	a.mu.Lock()
@@ -293,6 +387,7 @@ func (a *Accounts) RemoveAll() error {
 	a.creds = nil
 	a.index = 0
 	a.lastRefresh = make(map[string]time.Time)
+	a.rateCooldown = make(map[string]time.Time)
 	a.mu.Unlock()
 	return nil
 }

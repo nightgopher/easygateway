@@ -67,6 +67,8 @@ curl http://127.0.0.1:4001/v1/systemone \
 
 账号授权成功不代表上游模型有额度或可用，仍需实际调用验证。成功授权会重置该渠道对应 Provider 的熔断与历史探测状态，避免之前的缺少凭据错误阻止新账号调用。
 
+一个渠道可登录多个账号（重复登录即可追加）。请求收到 429 配额限制时，网关先在该渠道内自动切换到下一个未耗尽的账号并重试一次；全部账号都在冷却时才打开 Provider 级 429 熔断、走链上下一个 Provider。账号冷却优先采用上游 `Retry-After`（秒数或 HTTP 日期，截断到 1 秒至 24 小时），缺失时默认 5 分钟；冷却状态保存在内存中，重启后清零。`GET /admin/channels` 的账号摘要为每个账号提供 `rate_limited_until`，桌面端据此展示各账号的额度窗口。
+
 TRAE 渠道在 macOS 上可自动识别 `/Applications` 或 `~/Applications` 下已安装的 TRAE CN 客户端，读取安装包 `product.json` 中的客户端标识与版本，无需手动填写额外标识。非标准路径可用 `TRAE_CHANNEL_CLIENT_PRODUCT` 指定该文件；环境变量与 `trae-client.json` 仍优先。此识别不导入 IDE 的账号令牌，仍由用户在浏览器中为网关完成授权。国际版配置不会用于国内渠道。
 
 这些接口使用管理凭据鉴权：
@@ -97,6 +99,31 @@ llm-gateway setup pi --endpoint https://gateway.example.com/v1
 完成后在 Pi 的 `/model` 中选择 `llm-gateway/coding`。
 
 ### 3. 配置 Claude Code
+
+#### 接管命令（推荐）
+
+```bash
+gateway claude coding     # 接管：settings.json 的 env 指向网关，模型 coding
+gateway claude status     # 查看接管状态（端点、模型、快照是否存在）
+gateway claude default    # 还原接管前的原始 env 值
+gateway codex coding      # Codex CLI 接管（未指定模型时默认 coding）
+gateway codex default     # 字节级还原 config.toml 原文
+```
+
+两个命令都支持 `--endpoint URL`（默认按网关 `.env` 的 PORT 推断
+`http://127.0.0.1:4001/v1`）与 `--dry-run`（打印将写入的内容，不落盘）。
+
+- Claude Code：只修改 `settings.json` 里 4 个受管 env 键
+  （`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` /
+  `ANTHROPIC_MODEL`），其余内容（modelPicker 等）原样保留；首次接管保存
+  键级快照 `settings.json.easygateway-bak`，重复接管不覆盖快照，
+  `default` 按快照精确还原（原本不存在的键删除、原本没有 settings.json
+  则删除该文件）。
+- Codex CLI：写入顶层 `model_provider` / `model` 与
+  `[model_providers.easygateway]`（wire_api 用网关的 Responses 端点），
+  既有 provider 条目保留；快照是整文件字节备份，`default` 一字不差地还原
+  原文（含注释）。接管期间的写盘可能丢失 config.toml 中的注释，介意者用
+  `--dry-run` 预览。
 
 #### Anthropic 兼容客户端
 
@@ -172,6 +199,9 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 | `/admin/providers` | GET | 查看 Provider 运行状态、熔断状态和用量 |
 | `/admin/providers/:name` | PATCH | 设置 `{"enabled":true/false}`，运行时启停 Provider |
 | `/admin/providers/:name/reset` | POST | 手动重置熔断器 |
+| `/admin/gateway-keys` | GET / POST | 列出/创建 gateway key（列表只回 token 提示） |
+| `/admin/gateway-keys/:id` | PATCH / DELETE | 启停/删除 gateway key |
+| `/admin/gateway-keys/:id/rotate` | POST | 轮换 gateway key 的 token |
 | `/admin/providers/:name/health-check` | POST | 执行一次 Provider 健康探测 |
 | `/admin/routes` | GET | 查看模型的故障转移顺序 |
 | `/admin/routes/:model` | PUT | 用 `{"providers":[...]}` 调整同一链路的优先级 |
@@ -232,6 +262,25 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 - `?days=30`（默认 7，上限 400）或 `?from=YYYY-MM-DD&to=YYYY-MM-DD`（闭区间，跨度上限 400 天）；
 - 返回 `days`（按天序列，缺失日期补零，可直接画图）、`models`（按请求量排序，`provider` 为该模型用量最大的渠道）与 `providers` 排行；
 - 数据来自 SQLite `daily_stats` 按天聚合表，跨重启可查；该表独立于请求日志保留（默认 365 天，`STATS_RETENTION_DAYS` 可调），请求日志仍按 30 天清理。
+
+### Gateway Key 多密钥
+
+gateway key 是发给具体客户端（手机、他人设备、试验脚本）的受限身份，与 master key 分工：master key 是管理员身份（全部模型、无限量、可进 `/admin`），gateway key 进不了 `/admin`。存储为网关主目录的 `gateway-keys.json`（0600），不存在时行为与从前完全一致。
+
+- **创建**：`POST /admin/gateway-keys`，body `{"name": "phone", "allowed_models": ["glm-*", "coding"], "limits": {"day": 500000, "week": 2000000, "month": 20000000}}`；完整 token（`sk-gw-` 前缀）只在创建与轮换的响应里出现一次，列表只返回 `token_hint`。
+- **模型白名单**：`allowed_models` 用 glob；空白名单放行全部。不匹配的请求在路由前返回 403。
+- **token 限额**：`limits` 按本地自然日/周（周一起始）/自然月的固定窗口计数，跨重启保留；预算耗尽返回 429、`Retry-After` 与窗口名。先放行后计数，窗口内最后一个请求可能略微超出预算（不做中途截断）。
+- **管理**：列表/创建/轮换（旧 token 立即失效）/启停/删除；用量计数随列表可见。
+
+### 用量成本统计
+
+`GET /admin/usage`（区间参数与 stats/history 相同，默认 30 天）把区间内的 token 用量按单价折算为美元成本，回答「这段时间每个模型/渠道花了多少钱」：
+
+- 返回 `rows`（「模型 × 渠道」维度，按成本降序）、`providers`（渠道维度汇总）、`total_cost_usd` 与 `unpriced_models`；
+- 单价在 `providers.yaml` 模型条目的 `pricing` 字段声明（`input_per_m` / `output_per_m` / `cache_read_per_m` / `cache_write_per_m`，USD / 百万 token），改价只改配置；`/v1/models` 与 `/admin/models` 会一并返回 `pricing`；
+- 计费口径：输入按 `input_per_m`、输出按 `output_per_m`、缓存读/写单独计价；上游把缓存读计入 input_tokens 时（OpenAI 风格），计费输入会扣掉缓存读避免双计，是「不高于标价」的保守估计；
+- 查找顺序先按请求模型名、再按渠道实例名：链别名（如 `coding`）借用其成员模型（即渠道实例）的单价折算；
+- 没有配置单价、或升级前没有 input/output 拆分的历史行，不计成本并列入 `unpriced_models`——`cost_usd: 0` 只表示「未知」，不表示免费。
 
 ### 对话归档与增量导出
 
@@ -681,6 +730,12 @@ curl -X POST http://localhost:4001/v1/messages \
 ```
 
 ### 配置 Claude Code（远程）
+
+远程网关把 base URL 换成网关地址即可，或直接用接管命令加 `--endpoint`：
+
+```bash
+gateway claude coding --endpoint https://gateway.example.com/v1
+```
 
 ```json
 {

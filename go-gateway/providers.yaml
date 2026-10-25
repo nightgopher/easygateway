@@ -25,6 +25,11 @@ providers:
       - id: glm-5.3
         # 始终思考模型：上游不接受 thinking:disabled（网关侧自动丢弃该参数）
         capabilities: [text, tool_calling, streaming, reasoning]
+        # 单价（USD / 百万 token），供 GET /admin/usage 折算成本。取消注释并
+        # 按官网刊例价填写后生效；缓存读写单价未披露则省略（缓存读按输入价计）。
+        # pricing:
+        #   input_per_m: 3
+        #   output_per_m: 12
       # flash 同样支持图片输入（实测 coding/paas 两个端点都收 image_url），
       # 因此图片能力落在这一档，不再单开一个更弱的 glm-5v-turbo 供应商。
       - id: glm-5.3-flash

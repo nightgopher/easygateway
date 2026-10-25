@@ -143,7 +143,14 @@ go build -o gateway .
 # 配置 Pi
 ./gateway setup pi --dry-run
 
-# Codex CLI 模型切换
+# Claude Code / Codex CLI 接管与还原
+gateway claude coding
+gateway claude status
+gateway claude default
+gateway codex coding
+gateway codex default
+
+# Codex CLI 模型切换（旧脚本，与 gateway codex 等价的 shell 版本）
 codex-model gateway <model>
 codex-model native
 codex-model status

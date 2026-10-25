@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nightgopher/easygateway/internal/gwkeys"
 	"github.com/nightgopher/easygateway/internal/metrics"
 	"github.com/nightgopher/easygateway/internal/requestmeta"
 )
 
-// Logging 创建请求日志中间件，同时记录指标
-func Logging(logger *log.Logger, collector *metrics.Collector) gin.HandlerFunc {
+// Logging 创建请求日志中间件，同时记录指标。gatewayKeys 非 nil 时，业务
+// 请求的 token 用量会同步计入所用 gateway key 的窗口计数（见 gwkeys 包
+// 注释：先放行后计数，窗口内最后一个请求可能略微超出预算）。
+func Logging(logger *log.Logger, collector *metrics.Collector, gatewayKeys *gwkeys.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
@@ -61,6 +64,15 @@ func Logging(logger *log.Logger, collector *metrics.Collector) gin.HandlerFunc {
 				CacheUsageKnown:          c.GetBool(requestmeta.CacheUsageKnownKey),
 				Error:                    requestError,
 			})
+			if gatewayKeys != nil && metrics.IsBusinessRequest(c.Request.Method, path) {
+				if keyID := c.GetString(gwkeys.ContextKey); keyID != "" {
+					input := c.GetInt(requestmeta.InputTokensKey)
+					if cacheInput := c.GetInt(requestmeta.CacheInputTokensKey); c.GetBool(requestmeta.CacheUsageKnownKey) && cacheInput > input {
+						input = cacheInput
+					}
+					gatewayKeys.RecordUsage(keyID, int64(input+c.GetInt(requestmeta.OutputTokensKey)), time.Now())
+				}
+			}
 		}
 	}
 }

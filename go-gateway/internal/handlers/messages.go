@@ -57,7 +57,9 @@ func (h *MessageHandler) Handle(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Messages are required"})
 		return
 	}
-	setRequestMetadata(c, req.Model, req.Stream)
+	if !setRequestMetadata(c, req.Model, req.Stream) {
+		return
+	}
 
 	if req.Stream {
 		h.handleStream(c, &req, rawBody)

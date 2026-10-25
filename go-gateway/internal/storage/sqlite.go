@@ -140,6 +140,10 @@ func initSchema(db *sql.DB) error {
 		{"daily_stats", "cache_creation_input_tokens", "INTEGER DEFAULT 0"},
 		{"daily_stats", "cache_input_tokens", "INTEGER DEFAULT 0"},
 		{"daily_stats", "cache_usage_requests", "INTEGER DEFAULT 0"},
+		// input/output 拆分列（用量成本统计用）：历史行两列为 0，无法回溯拆分，
+		// 成本统计把它们记为 unpriced，而不是按 0 冒充免费。
+		{"daily_stats", "input_tokens", "INTEGER DEFAULT 0"},
+		{"daily_stats", "output_tokens", "INTEGER DEFAULT 0"},
 	} {
 		if err := ensureColumn(db, column.table, column.name, column.definition); err != nil {
 			return err
@@ -183,10 +187,12 @@ func migrateDailyStatsPrimaryKey(db *sql.DB) error {
 			cache_creation_input_tokens INTEGER DEFAULT 0,
 			cache_input_tokens INTEGER DEFAULT 0,
 			cache_usage_requests INTEGER DEFAULT 0,
+			input_tokens INTEGER DEFAULT 0,
+			output_tokens INTEGER DEFAULT 0,
 			PRIMARY KEY (date, model, provider)
 		)`,
-		`INSERT OR IGNORE INTO daily_stats_v2 (date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests)
-		 SELECT date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests FROM daily_stats`,
+		`INSERT OR IGNORE INTO daily_stats_v2 (date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests, input_tokens, output_tokens)
+		 SELECT date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests, input_tokens, output_tokens FROM daily_stats`,
 		`DROP TABLE daily_stats`,
 		`ALTER TABLE daily_stats_v2 RENAME TO daily_stats`,
 	}
@@ -265,8 +271,8 @@ func (s *SQLiteStore) SaveRecordContext(ctx context.Context, r metrics.RequestRe
 	}
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO daily_stats (date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests)
-		VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO daily_stats (date, model, provider, requests, successes, errors, total_tokens, total_latency_ms, cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests, input_tokens, output_tokens)
+		VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(date, model, provider) DO UPDATE SET
 			requests = requests + 1,
 			successes = successes + ?,
@@ -276,10 +282,12 @@ func (s *SQLiteStore) SaveRecordContext(ctx context.Context, r metrics.RequestRe
 			cache_read_input_tokens = cache_read_input_tokens + ?,
 			cache_creation_input_tokens = cache_creation_input_tokens + ?,
 			cache_input_tokens = cache_input_tokens + ?,
-			cache_usage_requests = cache_usage_requests + ?
+			cache_usage_requests = cache_usage_requests + ?,
+			input_tokens = input_tokens + ?,
+			output_tokens = output_tokens + ?
 	`, date, r.Model, r.Provider, success, 1-success, tokens, r.Latency,
-		r.CacheReadInputTokens, r.CacheCreationInputTokens, r.CacheInputTokens, cacheUsageRequests,
-		success, 1-success, tokens, r.Latency, r.CacheReadInputTokens, r.CacheCreationInputTokens, r.CacheInputTokens, cacheUsageRequests)
+		r.CacheReadInputTokens, r.CacheCreationInputTokens, r.CacheInputTokens, cacheUsageRequests, r.InputTokens, r.OutputTokens,
+		success, 1-success, tokens, r.Latency, r.CacheReadInputTokens, r.CacheCreationInputTokens, r.CacheInputTokens, cacheUsageRequests, r.InputTokens, r.OutputTokens)
 
 	if err != nil {
 		return err
@@ -350,7 +358,8 @@ func (s *SQLiteStore) GetDailyStats(date string) ([]metrics.ModelStats, error) {
 func (s *SQLiteStore) GetDailyStatRows(from, to string) ([]metrics.DailyStatRow, error) {
 	rows, err := s.db.Query(`
 		SELECT date, model, provider, requests, successes, errors, total_tokens, total_latency_ms,
-			cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests
+			cache_read_input_tokens, cache_creation_input_tokens, cache_input_tokens, cache_usage_requests,
+			input_tokens, output_tokens
 		FROM daily_stats
 		WHERE date >= ? AND date <= ?
 		ORDER BY date, model
@@ -363,7 +372,7 @@ func (s *SQLiteStore) GetDailyStatRows(from, to string) ([]metrics.DailyStatRow,
 	var out []metrics.DailyStatRow
 	for rows.Next() {
 		var r metrics.DailyStatRow
-		if err := rows.Scan(&r.Date, &r.Model, &r.Provider, &r.Requests, &r.Successes, &r.Errors, &r.TotalTokens, &r.TotalLatencyMS, &r.CacheReadInputTokens, &r.CacheCreationInputTokens, &r.CacheInputTokens, &r.CacheUsageRequests); err != nil {
+		if err := rows.Scan(&r.Date, &r.Model, &r.Provider, &r.Requests, &r.Successes, &r.Errors, &r.TotalTokens, &r.TotalLatencyMS, &r.CacheReadInputTokens, &r.CacheCreationInputTokens, &r.CacheInputTokens, &r.CacheUsageRequests, &r.InputTokens, &r.OutputTokens); err != nil {
 			continue
 		}
 		out = append(out, r)

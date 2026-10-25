@@ -384,6 +384,10 @@ func (p *TraeProvider) send(ctx context.Context, req *Request, cancel context.Ca
 	if err != nil {
 		return nil, fmt.Errorf("build trae request: %w", err)
 	}
+	usedToken := ""
+	if p.config.Auth != nil {
+		usedToken = p.config.Auth.BearerToken()
+	}
 	p.setHeaders(httpReq)
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -394,6 +398,13 @@ func (p *TraeProvider) send(ctx context.Context, req *Request, cancel context.Ca
 		resp.Body.Close()
 		// 401/403 时用账号池续期一次并重试，与 CloudCodeProvider 的语义一致。
 		if p.config.refreshAuth(ctx, resp.StatusCode) {
+			return p.sendOnce(ctx, body)
+		}
+		// 429 先做渠道内账号轮转（sendOnce 只重试一次，轮转失败则原 429
+		// 返回给路由层走 provider 级配额熔断）。usedToken 是本次请求实际
+		// 用的令牌，避免并发轮转后把冷却记到别的账号头上。
+		if resp.StatusCode == http.StatusTooManyRequests &&
+			p.config.rotateOnRateLimit(ctx, usedToken, resp.Header.Get("Retry-After")) {
 			return p.sendOnce(ctx, body)
 		}
 		if resp.StatusCode == http.StatusUnauthorized && p.config.Auth != nil && !p.config.authAvailable() {

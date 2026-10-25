@@ -21,8 +21,11 @@ import (
 	"github.com/nightgopher/easygateway/internal/auth"
 	"github.com/nightgopher/easygateway/internal/ccswitchconfig"
 	"github.com/nightgopher/easygateway/internal/channel"
+	"github.com/nightgopher/easygateway/internal/claudeconfig"
+	"github.com/nightgopher/easygateway/internal/codexconfig"
 	"github.com/nightgopher/easygateway/internal/config"
 	"github.com/nightgopher/easygateway/internal/corspolicy"
+	"github.com/nightgopher/easygateway/internal/gwkeys"
 	"github.com/nightgopher/easygateway/internal/handlers"
 	"github.com/nightgopher/easygateway/internal/memory"
 	"github.com/nightgopher/easygateway/internal/metrics"
@@ -160,9 +163,17 @@ func main() {
 
 	engine.Use(corsPolicy.Middleware())
 
+	// gateway key 多密钥体系：发给客户端的受限身份（模型白名单 + token 限额）。
+	// 文件不存在时为空集合，行为与从前一致；加载失败时禁用第二把锁并告警。
+	gatewayKeys, gkErr := gwkeys.Load(filepath.Join(defaultGatewayHome(), "gateway-keys.json"))
+	if gkErr != nil {
+		logger.Printf("Warning: gateway keys disabled: %v", gkErr)
+		gatewayKeys = nil
+	}
+
 	engine.Use(middleware.RequestID())
-	engine.Use(middleware.Logging(logger, collector))
-	engine.Use(auth.BearerAuthWithAdminToken(cfg.MasterKey, cfg.AdminToken, logger))
+	engine.Use(middleware.Logging(logger, collector, gatewayKeys))
+	engine.Use(auth.BearerAuthWithGatewayKeys(cfg.MasterKey, cfg.AdminToken, gatewayKeys, logger))
 
 	// 管理端点使用独立的 admin auth
 	adminAuth := auth.AdminAuth(cfg.MasterKey, cfg.AdminToken, logger)
@@ -294,6 +305,13 @@ func main() {
 		admin.POST("/ccswitch/remote-import", ccswitchHandler.HandleRemoteImport)
 		admin.GET("/stats", adminHandler.HandleStats)
 		admin.GET("/stats/history", adminHandler.HandleStatsHistory)
+		admin.GET("/usage", adminHandler.HandleUsage)
+		gatewayKeyHandler := handlers.NewGatewayKeyHandler(gatewayKeys, logger)
+		admin.GET("/gateway-keys", gatewayKeyHandler.HandleList)
+		admin.POST("/gateway-keys", gatewayKeyHandler.HandleCreate)
+		admin.POST("/gateway-keys/:id/rotate", gatewayKeyHandler.HandleRotate)
+		admin.PATCH("/gateway-keys/:id", gatewayKeyHandler.HandleSetEnabled)
+		admin.DELETE("/gateway-keys/:id", gatewayKeyHandler.HandleRemove)
 		admin.GET("/archives", archiveHandler.HandleList)
 		admin.GET("/archives/export", archiveHandler.HandleExport)
 		admin.DELETE("/archives", archiveHandler.HandleDeleteBefore)
@@ -372,6 +390,10 @@ func runCommand(args []string) error {
 			return fmt.Errorf("usage: llm-gateway setup pi [--endpoint URL] [--dry-run]")
 		}
 		return setupPi(args[2:])
+	case "claude":
+		return claudeCommand(args[1:])
+	case "codex":
+		return codexCommand(args[1:])
 	case "provider":
 		return providerCommand(args[1:])
 	case "migrate":
@@ -425,6 +447,195 @@ func setupPi(args []string) error {
 	}
 	fmt.Fprintf(os.Stdout, "Pi configured: %s\nSelect llm-gateway/coding in Pi with /model.\n", path)
 	return nil
+}
+
+// clientAction 解析 claude/codex 接管子命令的公共形态：
+// 无参数 = status，default = 还原，其余视为要接入的模型名。
+type clientAction struct {
+	Model    string
+	Status   bool
+	Restore  bool
+	Endpoint string
+	DryRun   bool
+}
+
+func parseClientAction(name string, args []string) (clientAction, error) {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	action := clientAction{}
+	flags.StringVar(&action.Endpoint, "endpoint", "", "Gateway base URL (defaults to the local gateway)")
+	flags.BoolVar(&action.DryRun, "dry-run", false, "Print the resulting config without writing it")
+	if err := flags.Parse(args); err != nil {
+		return action, err
+	}
+	rest := flags.Args()
+	switch {
+	case len(rest) == 0:
+		action.Status = true
+	case len(rest) == 1 && rest[0] == "status":
+		action.Status = true
+	case len(rest) == 1 && rest[0] == "default":
+		action.Restore = true
+	case len(rest) == 1:
+		action.Model = rest[0]
+	default:
+		return action, fmt.Errorf("usage: llm-gateway %s [status|default|<model>] [--endpoint URL] [--dry-run]", name)
+	}
+	return action, nil
+}
+
+// gatewayEndpointAndKey 解析网关地址与认证 token（输出不回显 key）。
+func gatewayEndpointAndKey(endpointFlag string) (endpoint, masterKey string, err error) {
+	endpoint, err = piconfig.ResolveEndpoint(endpointFlag, defaultGatewayHome())
+	if err != nil {
+		return "", "", err
+	}
+	masterKey, err = piconfig.MasterKey(defaultGatewayHome())
+	if err != nil {
+		return "", "", err
+	}
+	return endpoint, masterKey, nil
+}
+
+func claudeCommand(args []string) error {
+	action, err := parseClientAction("claude", args)
+	if err != nil {
+		return err
+	}
+	home := defaultClaudeHome()
+	switch {
+	case action.Status:
+		status, err := claudeconfig.ReadStatus(home)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stdout, "settings: %s (exists: %v)\n", status.Path, status.FileExists)
+		fmt.Fprintf(os.Stdout, "base_url: %s\n", status.BaseURL)
+		fmt.Fprintf(os.Stdout, "auth_token_set: %v, api_key_set: %v\n", status.AuthTokenSet, status.APIKeySet)
+		fmt.Fprintf(os.Stdout, "model: %s\n", status.Model)
+		fmt.Fprintf(os.Stdout, "takeover_snapshot: %v\n", status.SnapshotExists)
+		return nil
+	case action.Restore:
+		path, err := claudeconfig.Restore(home, action.DryRun)
+		if err != nil {
+			return err
+		}
+		if action.DryRun {
+			fmt.Fprintf(os.Stdout, "Would restore: %s\n", path)
+		} else {
+			fmt.Fprintf(os.Stdout, "Claude Code restored: %s\n", path)
+		}
+		return nil
+	}
+	endpoint, masterKey, err := gatewayEndpointAndKey(action.Endpoint)
+	if err != nil {
+		return err
+	}
+	content, path, err := claudeconfig.Takeover(claudeconfig.Options{
+		ClaudeHome: home,
+		Endpoint:   endpoint,
+		MasterKey:  masterKey,
+		Model:      action.Model,
+		DryRun:     action.DryRun,
+	})
+	if err != nil {
+		return err
+	}
+	if action.DryRun {
+		_, err = os.Stdout.Write(content)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Would write: %s\n", path)
+		return nil
+	}
+	modelNote := ""
+	if action.Model != "" {
+		modelNote = fmt.Sprintf(" (model %s)", action.Model)
+	}
+	fmt.Fprintf(os.Stdout, "Claude Code taken over%s: %s\nUndo any time with: llm-gateway claude default\n", modelNote, path)
+	return nil
+}
+
+func codexCommand(args []string) error {
+	action, err := parseClientAction("codex", args)
+	if err != nil {
+		return err
+	}
+	home := defaultCodexHome()
+	switch {
+	case action.Status:
+		status, err := codexconfig.ReadStatus(home)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stdout, "config: %s (exists: %v)\n", status.Path, status.FileExists)
+		fmt.Fprintf(os.Stdout, "model_provider: %s, model: %s\n", status.ModelProvider, status.Model)
+		fmt.Fprintf(os.Stdout, "gateway base_url: %s\n", status.BaseURL)
+		fmt.Fprintf(os.Stdout, "takeover_snapshot: %v\n", status.SnapshotExists)
+		return nil
+	case action.Restore:
+		path, err := codexconfig.Restore(home, action.DryRun)
+		if err != nil {
+			return err
+		}
+		if action.DryRun {
+			fmt.Fprintf(os.Stdout, "Would restore: %s\n", path)
+		} else {
+			fmt.Fprintf(os.Stdout, "Codex CLI restored: %s\n", path)
+		}
+		return nil
+	}
+	endpoint, masterKey, err := gatewayEndpointAndKey(action.Endpoint)
+	if err != nil {
+		return err
+	}
+	content, path, err := codexconfig.Takeover(codexconfig.Options{
+		CodexHome: home,
+		Endpoint:  endpoint,
+		MasterKey: masterKey,
+		Model:     action.Model,
+		DryRun:    action.DryRun,
+	})
+	if err != nil {
+		return err
+	}
+	model := action.Model
+	if model == "" {
+		model = codexconfig.DefaultModel
+	}
+	if action.DryRun {
+		_, err = os.Stdout.Write(content)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Would write: %s\n", path)
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "Codex CLI taken over (model %s): %s\nUndo any time with: llm-gateway codex default\n", model, path)
+	return nil
+}
+
+func defaultClaudeHome() string {
+	if home := os.Getenv("CLAUDE_HOME"); home != "" {
+		return home
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return ".claude"
+	}
+	return filepath.Join(userHome, ".claude")
+}
+
+func defaultCodexHome() string {
+	if home := os.Getenv("CODEX_HOME"); home != "" {
+		return home
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return ".codex"
+	}
+	return filepath.Join(userHome, ".codex")
 }
 
 func defaultGatewayHome() string {

@@ -31,7 +31,7 @@ func TestTruncatedStreamStopsFallbackAndRecordsInterruption(t *testing.T) {
 			router.RegisterChain("coding", []string{"broken", "good"})
 			collector := metrics.NewCollector()
 			engine := gin.New()
-			engine.Use(middleware.Logging(logger, collector))
+			engine.Use(middleware.Logging(logger, collector, nil))
 			body := `{"model":"coding","stream":true,"messages":[{"role":"user","content":"hi"}]}`
 			switch path {
 			case "/v1/messages":

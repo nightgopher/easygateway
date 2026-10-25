@@ -176,7 +176,7 @@ func TestChatCompletionsRecordsRequestCorrelationAndProvider(t *testing.T) {
 
 	engine := gin.New()
 	engine.Use(middleware.RequestID())
-	engine.Use(middleware.Logging(logger, collector))
+	engine.Use(middleware.Logging(logger, collector, nil))
 	engine.POST("/v1/chat/completions", NewChatCompletionsHandler(router, logger).Handle)
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"coding","messages":[{"role":"user","content":"hi"}]}`))
 	request.Header.Set("X-Request-ID", "meta-123")
