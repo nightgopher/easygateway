@@ -50,6 +50,6 @@ go run github.com/egoist/mygo/cmd/mygo build
 
 推送版本标签后，Release 流程会验证标签与 `mygo.json` 版本一致，并上传 macOS Apple Silicon 桌面 DMG、网关二进制及 `SHA256SUMS`；任一构建失败时不会发布缺少客户端的 Release。桌面安装包当前仅提供 macOS arm64，其他平台仍需单独验收。
 
-默认构建为 ad-hoc 签名。公开分发需在 `mygo.json` 配置 `macos.signingIdentity` 与 `macos.notarize.keychainProfile`，完成 Developer ID 签名、公证和票据附加；不在仓库保存证书或凭据。桌面客户端尚未配置在线自动更新。
+默认构建为 ad-hoc 签名。公开分发需在 `mygo.json` 配置 `macos.signingIdentity` 与 `macos.notarize.keychainProfile`，完成 Developer ID 签名、公证和票据附加；不在仓库保存证书或凭据。桌面客户端支持应用内自更新：`mygo.json` 的 `updates` 指向 GitHub Release（Ed25519 签名清单，密钥与网关 `gateway update` 共用），应用菜单「应用 → 检查更新…」手动检查，默认每日后台自动检查；Release 流水线用 `MYGO_UPDATER_PRIVATE_KEY` 产出签名更新包。签名私钥保存在本机 `~/Library/Application Support/mygo/update-keys/mygo-update.key` 与 GitHub Secrets——**丢失私钥意味着已安装的实例无法再更新到新版本**，请妥善备份。
 
 复现问题时，可设置 `GATEWAY_DESKTOP_CONFIG_DIR` 到临时目录以隔离连接配置。应用图标保存在 `resources/icon.png`，由 MyGo 打包为各平台资源。

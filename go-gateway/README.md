@@ -282,6 +282,15 @@ gateway key 是发给具体客户端（手机、他人设备、试验脚本）�
 - **token 限额**：`limits` 按本地自然日/周（周一起始）/自然月的固定窗口计数，跨重启保留；预算耗尽返回 429、`Retry-After` 与窗口名。先放行后计数，窗口内最后一个请求可能略微超出预算（不做中途截断）。
 - **管理**：列表/创建/轮换（旧 token 立即失效）/启停/删除；用量计数随列表可见。
 
+### 自更新
+
+`gateway update [check] [--feed URL]` 从 GitHub Release 的签名清单自更新（`check` 只检查不安装；更新源是版本 tag，与迷你主机跟 main 的构建更新器互补）：
+
+- **签名链**：Release 流水线把各平台二进制打成 tar.gz 并用 Ed25519 私钥签名（私钥存 GitHub Secrets 的 `MYGO_UPDATER_PRIVATE_KEY`），产出 `update-gateway-<os>-<arch>.json` 清单；公钥编译期内置，清单与归档不匹配一律拒绝。
+- **安装顺序**：下载验签（尺寸 + SHA-256 摘要签名）→ 解出二进制 → **隔离端口预检**（临时主目录起候选进程，`/health` 不通绝不替换）→ 旧件挪到 `<二进制>.rollback` → 原子换位 → 拉起宿主服务 → 健康轮询 60 秒，失败自动回滚。
+- **宿主服务**：macOS kickstart launchd（默认标签 `local.go-gateway`，`EASYGATEWAY_LAUNCHAGENT` 可覆盖）；Linux 依次尝试 systemd user/系统级单元（默认 `easygateway`，`EASYGATEWAY_SYSTEMD_UNIT` 可覆盖）；都没有则提示手动重启（二进制已就位）。
+- 清单格式与 mygo 桌面端更新清单一致，网关与桌面端共用同一把签名密钥。
+
 ### 用量成本统计
 
 `GET /admin/usage`（区间参数与 stats/history 相同，默认 30 天）把区间内的 token 用量按单价折算为美元成本，回答「这段时间每个模型/渠道花了多少钱」：

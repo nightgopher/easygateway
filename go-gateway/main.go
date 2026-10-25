@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -33,6 +34,7 @@ import (
 	"github.com/nightgopher/easygateway/internal/piconfig"
 	"github.com/nightgopher/easygateway/internal/provider"
 	"github.com/nightgopher/easygateway/internal/providerpresets"
+	"github.com/nightgopher/easygateway/internal/selfupdate"
 	"github.com/nightgopher/easygateway/internal/storage"
 )
 
@@ -398,6 +400,8 @@ func runCommand(args []string) error {
 		return codexCommand(args[1:])
 	case "provider":
 		return providerCommand(args[1:])
+	case "update":
+		return updateCommand(args[1:])
 	case "migrate":
 		if len(args) < 2 || args[1] != "cc-switch" {
 			return fmt.Errorf("usage: llm-gateway migrate cc-switch [--home PATH] [--include a,b] [--dry-run]")
@@ -671,6 +675,119 @@ func defaultDshHome() string {
 		return ".dsh"
 	}
 	return filepath.Join(userHome, ".dsh")
+}
+
+// updateCommand 自更新：拉取 Release 的签名清单 → 验签下载 → 隔离端口
+// 预检 → 原子替换二进制 → 拉起宿主服务（launchd/systemd）→ 健康轮询，
+// 失败自动回滚。`update check` 只检查不安装。
+func updateCommand(args []string) error {
+	flags := flag.NewFlagSet("update", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	feed := flags.String("feed", selfupdate.DefaultFeed("nightgopher/easygateway"), "Update manifest URL")
+	// 「check」允许出现在 flag 前后任意位置（flag.Parse 在首个位置参数处
+	// 停止，先把它摘出来再解析）。
+	checkOnly := false
+	rest := args[:0]
+	for _, arg := range args {
+		if arg == "check" {
+			checkOnly = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	if err := flags.Parse(rest); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("usage: llm-gateway update [check] [--feed URL]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	manifest, err := selfupdate.FetchManifest(ctx, *feed)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "最新版本: %s（当前: %s）\n", manifest.Version, version)
+	if manifest.Date != "" {
+		fmt.Fprintf(os.Stdout, "发布时间: %s\n", manifest.Date)
+	}
+	if manifest.Notes != "" {
+		fmt.Fprintf(os.Stdout, "更新说明:\n%s\n", manifest.Notes)
+	}
+	if !manifest.NewerThan(version) {
+		fmt.Fprintln(os.Stdout, "已是最新版本。")
+		return nil
+	}
+	if checkOnly {
+		fmt.Fprintln(os.Stdout, "有可用更新（本命令只检查；执行更新: llm-gateway update）")
+		return nil
+	}
+
+	// 下载 + 验签。
+	archive, err := os.CreateTemp("", "easygateway-update-*.tar.gz")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(archive.Name())
+	fmt.Fprintln(os.Stdout, "下载更新归档并校验签名…")
+	if err := manifest.DownloadArchive(ctx, archive); err != nil {
+		archive.Close()
+		return err
+	}
+	archive.Close()
+
+	// 解出二进制并预检。
+	incoming, err := os.CreateTemp("", "easygateway-update-binary-*")
+	if err != nil {
+		return err
+	}
+	incoming.Close()
+	defer os.Remove(incoming.Name())
+	if err := selfupdate.ExtractBinary(archive.Name(), incoming.Name()); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stdout, "预检新版本（隔离端口）…")
+	preflightPort := 24000 + int(time.Now().UnixNano()%10000)
+	if err := selfupdate.Preflight(ctx, incoming.Name(), preflightPort); err != nil {
+		return fmt.Errorf("预检失败，未做任何变更: %w", err)
+	}
+
+	// 替换 + 重启 + 健康验证 + 失败回滚。
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "替换二进制: %s\n", executable)
+	rollbackPath, err := selfupdate.Install(executable, incoming.Name())
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "旧版本已备份: %s\n", rollbackPath)
+	if err := selfupdate.RestartSupervisor(); err != nil {
+		if errors.Is(err, selfupdate.ErrManualRestart) {
+			fmt.Fprintln(os.Stdout, "未检测到 launchd/systemd 托管；二进制已替换，重启网关进程后生效。")
+			return nil
+		}
+		return fmt.Errorf("服务重启失败（二进制已替换，可手动重启）: %w", err)
+	}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "4001"
+	}
+	fmt.Fprintln(os.Stdout, "重启服务并等待恢复…")
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer healthCancel()
+	if err := selfupdate.PollHealth(healthCtx, "http://127.0.0.1:"+port+"/health", 60*time.Second); err != nil {
+		fmt.Fprintln(os.Stderr, "重启后健康检查失败，回滚到旧版本…")
+		if rbErr := selfupdate.Rollback(executable, rollbackPath); rbErr != nil {
+			return fmt.Errorf("健康检查失败且回滚失败，请手动用 %s 恢复: %v / %v", rollbackPath, err, rbErr)
+		}
+		return fmt.Errorf("已回滚到旧版本: %v", err)
+	}
+	fmt.Fprintf(os.Stdout, "更新完成: %s -> %s\n", version, manifest.Version)
+	return nil
 }
 
 // providerCommand 快速接入新供应商：

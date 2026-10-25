@@ -14,5 +14,11 @@
       "Utility"
     ],
     "command": "easygateway-desktop"
+  },
+  "updates": {
+    "publicKey": "WSZKmCGYBcyCH2p6WGUMl3TPEATGA87xxsSIQpDaM/4=",
+    "github": "nightgopher/easygateway",
+    "tagPrefix": "v",
+    "deltas": 0
   }
 }
