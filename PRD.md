@@ -214,6 +214,7 @@ Admin API 和管理端至少支持：
 | SQLite 指标 | ✅ 已实现 | request_logs、daily_stats |
 | 请求关联与 Provider 尝试记录 | ✅ 已实现 | `X-Request-ID`、最终 Provider、每次 fallback 尝试均进入轻量指标日志 |
 | Admin API | ✅ 已实现 | Provider、模型、路由、日志和统计 |
+| provider preset 快速接入 | ✅ 已实现 | `gateway provider add` 一条命令写 providers.yaml + .env，配合 SIGHUP 热重载 |
 | 原生桌面管理端 | ✅ 已实现 | desktop/，MyGo Go 原生控件 |
 | 跨平台安装和发布 | ✅ 已实现 | GitHub Actions；版本线自 v0.1.0 重启 |
 | 完整对话归档 | ✅ 已实现 | `ARCHIVE_ENABLED` 独立数据面，脱敏、限长、保留期清理 |

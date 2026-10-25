@@ -7,6 +7,7 @@
 - **统一接入**：一个端点、一套密钥接入 Claude Code、Codex CLI、Pi 等所有 AI 应用；三协议兼容，支持流式、工具调用与多模态。
 - **能力调度**：按 text/vision 等能力选模型，多级模型链自动 fallback，健康检查与熔断恢复，请求级追踪与聚合指标。
 - **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动。
+- **快速接入**：`gateway provider add <preset> <key> --models ...` 一条命令接入 deepseek/moonshot/openrouter 等常见供应商（文本级插入 providers.yaml，注释不动，SIGHUP 热重载生效）。
 - **技能中心**：custom-skills 仓库清单同步（符号链接落盘），远端技能市场浏览、搜索、安装与卸载，全局与项目两级范围。
 - **记忆与助理**：跨客户端个人记忆层（candidate/active 治理、密钥守门）与流式常驻助理。
 - **归档与导出**：可控的完整对话归档（脱敏、限长、保留期清理），JSONL 增量导出供知识库消费。
@@ -130,7 +131,16 @@ llm-gateway setup pi --endpoint https://gateway.example.com/v1
 
 ### 添加新提供商
 
-无需修改代码！只需编辑 `providers.yaml` 文件：
+常见供应商用一条命令接入（flag 需放在位置参数之前）：
+
+```bash
+gateway provider presets                     # 查看内置 preset
+gateway provider add --models deepseek-chat,deepseek-reasoner deepseek sk-xxx
+```
+
+它会：把 preset 条目插入 `providers.yaml`（文本级插入，已有注释不动）→ 把 API Key 追加到同目录 `.env` → 提示热重载命令（`kill -HUP <pid>` 或 `POST /admin/config/reload`），无需重启。模型清单用 `--models` 显式给出，preset 不内置易过期的模型目录。
+
+也可以手动编辑 `providers.yaml` 文件：
 
 ```yaml
 providers:
