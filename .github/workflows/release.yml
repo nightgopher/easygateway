@@ -17,7 +17,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
+          - macos-26-intel
           - windows-latest
 
     steps:
@@ -120,13 +120,15 @@ jobs:
 
   desktop-release:
     name: Build macOS desktop release
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
           cache-dependency-path: desktop/go.sum
+      - name: Validate the macOS installer on Apple Silicon
+        run: bash scripts/tests/install-unix.Tests.sh
       - name: Validate desktop version
         working-directory: desktop
         run: |
