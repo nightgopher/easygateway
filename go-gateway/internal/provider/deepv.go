@@ -1003,7 +1003,15 @@ func (p *DeepVProvider) convertStream(r io.Reader, w io.Writer, model string) er
 	flushTextBlock()
 	flushThinkingBlock()
 	for _, block := range blocks {
-		closeBlock(openBlock(map[string]interface{}{"type": "tool_use", "id": block.ID, "name": block.Name, "input": block.Input}))
+		// Anthropic 规范：tool_use 块在 content_block_start 里只带空 input 占位，
+		// 参数经 input_json_delta 下发。严格按规范累积的客户端（如 DeepSeek
+		// harness）不读 start 里的 input，这里塞完整参数会被当成空参数执行。
+		idx := openBlock(map[string]interface{}{"type": "tool_use", "id": block.ID, "name": block.Name, "input": map[string]interface{}{}})
+		p.writeAnthropicEvent(writer, "content_block_delta", map[string]interface{}{
+			"index": idx,
+			"delta": map[string]interface{}{"type": "input_json_delta", "partial_json": string(block.Input)},
+		})
+		closeBlock(idx)
 	}
 	if len(blocks) > 0 {
 		stopReason = "tool_use"
