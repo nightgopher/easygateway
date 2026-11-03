@@ -119,6 +119,9 @@ func (c *Config) refreshAuth(ctx context.Context, status int) bool {
 	if status != http.StatusUnauthorized && status != http.StatusForbidden {
 		return false
 	}
+	if status == http.StatusForbidden && c.RefreshUnauthorizedOnly {
+		return false
+	}
 	return c.Auth.Refresh(ctx)
 }
 

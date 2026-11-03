@@ -178,13 +178,20 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 		if strings.TrimSpace(name) == "" || public[name] {
 			add("error", "chains."+name, "chain name must be nonempty and must not shadow a model or alias")
 		}
+		if strings.HasPrefix(name, "easycode/") {
+			add("error", "chains."+name, "easycode/ is reserved for account-discovered model names")
+		}
 		if len(members) == 0 {
 			add("error", "chains."+name, "chain must not be empty")
 		}
 		seen := map[string]bool{}
 		for _, member := range members {
 			if !instances[member] {
-				add("error", "chains."+name, "unknown provider instance: "+member)
+				if strings.HasPrefix(member, "easycode/") && len(member) > len("easycode/") && !strings.ContainsAny(member, "\r\n\t\x00") {
+					add("warning", "chains."+name, "EasyCode model availability is checked at runtime: "+member)
+				} else {
+					add("error", "chains."+name, "unknown provider instance: "+member)
+				}
 			}
 			if seen[member] {
 				add("error", "chains."+name, "duplicate provider instance: "+member)

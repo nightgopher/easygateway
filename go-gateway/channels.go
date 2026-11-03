@@ -29,7 +29,7 @@ import (
 // 由网关本地渲染）。这些渠道都把登录地址放进 DeviceCode.
 // VerificationURIComplete，Admin API 原样回成 login_url，因此登录入口与前端都不需要
 // 按渠道分支。
-func setupChannelProviders(router *provider.Router, registry *channel.Registry, logger *log.Logger) {
+func setupChannelProviders(router *provider.Router, registry *channel.Registry, logger *log.Logger) *channel.EasyCodeChannel {
 	dir := filepath.Join(defaultGatewayHome(), "channels")
 
 	instances := channelInstances{
@@ -44,11 +44,13 @@ func setupChannelProviders(router *provider.Router, registry *channel.Registry, 
 		raccoon:   channel.NewRaccoonChannel(dir),
 		opencode:  channel.NewOpenCodeChannel(dir),
 	}
+	easycode := channel.NewEasyCodeChannel(dir)
 
 	for _, c := range []channel.Channel{instances.minimax, instances.cline, instances.lobster, instances.gemini, instances.codebuddy, instances.workbuddy, instances.trae, instances.loomy, instances.raccoon, instances.opencode} {
 		registry.Register(c)
 		logger.Printf("Account channel registered: %s (credentials: %s)", c.Name(), filepath.Join(dir, c.Name()+".json"))
 	}
+	registry.Register(easycode)
 
 	// 工厂按「渠道名 + 模型 ID」构造绑定模型的 provider。渠道实例与账号池在这里
 	// 复用同一份，保证登录写回的令牌立即对 provider 生效。
@@ -60,6 +62,7 @@ func setupChannelProviders(router *provider.Router, registry *channel.Registry, 
 		c, _ := registry.Get(name)
 		logger.Printf("Account channel %s: %d account(s) loaded", name, c.Accounts().Len())
 	}
+	return easycode
 }
 
 // channelInstances 汇总已装配的渠道实例，按渠道名分发给 buildChannelProvider。

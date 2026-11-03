@@ -232,6 +232,8 @@ jobs:
 
   publish:
     name: Create Release
+    # A branch dispatch is a signing/notarization rehearsal, not a release.
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     needs:
       - installer-tests

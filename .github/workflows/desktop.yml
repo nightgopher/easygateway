@@ -19,7 +19,10 @@ jobs:
         working-directory: desktop
       - run: go run github.com/egoist/mygo/cmd/mygo vet
         working-directory: desktop
-      - run: go run github.com/egoist/mygo/cmd/mygo build -platform darwin/arm64 -skip-dmg
+      # PR builds do not have the release identity. Verify a runnable app with
+      # an ad hoc signature; the release workflow signs and notarizes the DMG.
+      - name: Build desktop app for CI
+        run: go run github.com/egoist/mygo/cmd/mygo build -platform darwin/arm64 -sign - -skip-notarize -skip-dmg
         working-directory: desktop
       - uses: actions/upload-artifact@v4
         with:

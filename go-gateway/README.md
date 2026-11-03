@@ -65,6 +65,12 @@ curl http://127.0.0.1:4001/v1/systemone \
 
 在原生桌面端的「账号渠道」中发起登录，由浏览器完成授权。账号令牌保存在网关主机的受保护凭据目录，桌面端不接收令牌明文。渠道是否需要额外客户端配置、是否支持匿名模型以及本机回调要求以 `GET /admin/channels` 返回值为准；缺少配置时按桌面端说明补齐并重启网关。
 
+EasyCode 渠道使用飞书登录，支持从桌面端管理远程网关：飞书回调落在桌面端的本机回环地址，授权码经现有管理连接交给网关换取令牌。登录后会按当前账号读取模型目录，以 `easycode/<上游模型名>` 注册可用模型和对应能力；启动后、登录后及此后每 5 分钟刷新，也可在桌面端手动刷新。使用该账号的额度和上游权限，账号退出后相应动态模型移出目录。飞书登录渠道不需要设置 `DEEPV_ENABLED`，也不读取或覆盖其他 EasyCode 客户端的凭据。
+
+远程管理连接应使用 HTTPS 或可信的加密网络，因为管理令牌和一次性授权码都经过该连接。
+
+`providers.yaml` 的 fallback 链可以引用 `easycode/<上游模型名>`；配置预检只验证名称格式，实际是否有模型权限以账号目录为准。模型未登录、被移除或暂不可用时，链继续尝试其他已配置 Provider。
+
 账号授权成功不代表上游模型有额度或可用，仍需实际调用验证。成功授权会重置该渠道对应 Provider 的熔断与历史探测状态，避免之前的缺少凭据错误阻止新账号调用。
 
 一个渠道可登录多个账号（重复登录即可追加）。请求收到 429 配额限制时，网关先在该渠道内自动切换到下一个未耗尽的账号并重试一次；全部账号都在冷却时才打开 Provider 级 429 熔断、走链上下一个 Provider。账号冷却优先采用上游 `Retry-After`（秒数或 HTTP 日期，截断到 1 秒至 24 小时），缺失时默认 5 分钟；冷却状态保存在内存中，重启后清零。`GET /admin/channels` 的账号摘要为每个账号提供 `rate_limited_until`，桌面端据此展示各账号的额度窗口。
@@ -78,6 +84,8 @@ TRAE 渠道在 macOS 上可自动识别 `/Applications` 或 `~/Applications` 下
 | `GET /admin/channels` | 渠道、账号概要及登录前提；不返回令牌 |
 | `POST /admin/channels/:channel/login` | 返回登录地址、授权码、有效期和 `login_id` |
 | `GET /admin/channels/:channel/login/:id` | 查询 `pending` / `complete` / `failed` / `cancelled` 状态 |
+| `POST /admin/channels/easycode/login/:id/callback` | 桌面端提交一次性飞书授权回调；需管理权限 |
+| `POST /admin/channels/easycode/models/refresh` | 按当前登录账号刷新 EasyCode 模型目录 |
 | `DELETE /admin/channels/:channel/login/:id` | 取消此次授权，释放回调服务；不移除账号 |
 | `DELETE /admin/channels/:channel/accounts/:index` | 移除指定账号凭据 |
 
@@ -544,7 +552,7 @@ Provider、模型能力和路由链见 [providers.yaml](providers.yaml)，运行
 - 请求本身不合法（400/422）→ **不**降级，直接返回（换个 provider 也是同样的错误）
 - 请求带图片时，不具备视觉能力的档位会被自动跳过
 
-启用 `DEEPV_ENABLED=true`（EasyCode/DeepVCode 聚合服务）后，网关读取本地 JWT 登录态注册相应模型；绑定与兼容 ID 以 Provider 实现和运行时目录为准。
+启用 `DEEPV_ENABLED=true` 后，原有 DeepV 模型与路由保持可用：登录 EasyCode 渠道时优先使用该账号；没有登录账号时继续读取本机 EasyCode/DeepVCode 的 JWT。飞书账号模型无需此开关。绑定与兼容 ID 以 Provider 实现和运行时目录为准。
 
 DeepV 工具调用适配会合并 JSON 字符串参数分片及同一调用 ID 的重复帧，完整参数收齐后再交给客户端执行；历史调用即使没有参数也保留 `args: {}`。不完整或非对象参数会明确报错，避免静默丢失后继续执行工具。
 
@@ -569,7 +577,7 @@ Antigravity Provider 为知识飞轮的长请求设置了 900 秒。这个值只
 | `COPILOT_TOKEN` | 否 | — | GitHub Copilot token（短期有效，约 30 分钟） |
 | `COPILOT_GITHUB_TOKEN` | 否 | — | GitHub OAuth token（用于自动刷新 Copilot token） |
 | `DEEPV_ENABLED` | 否 | `false` | 启用 DeepV Server（EasyCode/DeepVCode，deepseek / glm-5.3-flash 系列） |
-| `DEEPV_WORK_DIR` | 否 | 启动目录 | DeepV 请求附带的 Git 信息头来源目录 |
+| `DEEPV_WORK_DIR` | 否 | 启动目录 | 旧版 DeepV 集成请求附带的 Git 信息头来源目录；飞书账号模型不发送 Git 信息 |
 | `HTTP_PROXY` | 否 | — | ChatGPT Codex 的可选 HTTP 代理地址（如 `http://127.0.0.1:7890`） |
 | `CHATGPT_AUTH_FILE` | 否 | 自动查找 | ChatGPT/Pi OAuth `auth.json` 路径 |
 | `PORT` | 否 | 4001 | 监听端口 |

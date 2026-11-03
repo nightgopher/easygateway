@@ -34,6 +34,8 @@ func LoginInfoFor(ch Channel) LoginInfo {
 		info.LocalOnly = true
 	case "opencode":
 		info.SetupHint = "OpenCode 免费档仅供官方 OpenCode 客户端使用；登录不会解除限制。网关调用需添加并选择已授权的付费模型。"
+	case "easycode":
+		info.SetupHint = "使用飞书登录 EasyCode，模型请求使用该账号自己的额度。"
 	}
 	return info
 }
