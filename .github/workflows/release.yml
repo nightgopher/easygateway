@@ -35,10 +35,10 @@ jobs:
           powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
             -File scripts\tests\install-windows.Tests.ps1
 
+  # Build independently; the publish job still requires every installer test.
   release:
     name: Build and Release
     runs-on: ubuntu-latest
-    needs: installer-tests
     strategy:
       matrix:
         include:
@@ -121,7 +121,6 @@ jobs:
   desktop-release:
     name: Build macOS desktop release
     runs-on: macos-14
-    needs: installer-tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -188,7 +187,6 @@ jobs:
   desktop-release-linux:
     name: Build Linux desktop release
     runs-on: ubuntu-latest
-    needs: installer-tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
