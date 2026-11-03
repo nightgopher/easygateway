@@ -41,6 +41,13 @@ func (r *ConfigReloader) Status() ConfigReloadStatus {
 	return s
 }
 
+// Synchronize serializes dynamic catalog updates with configuration reloads.
+func (r *ConfigReloader) Synchronize(fn func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fn()
+}
+
 func (r *ConfigReloader) Check() (ConfigReport, error) {
 	cfg, err := LoadProvidersConfig(r.path)
 	if err != nil {
@@ -168,7 +175,11 @@ func (r *Router) IncludeMissingConfiguration(base *Router) {
 			continue
 		}
 		r.providers[name] = p
-		r.runtime[name] = &providerRuntime{enabled: true, breaker: NewCircuitBreaker(r.circuitConfig)}
+		channel := ""
+		if runtime := base.runtime[name]; runtime != nil {
+			channel = runtime.channel
+		}
+		r.runtime[name] = &providerRuntime{channel: channel, enabled: true, breaker: NewCircuitBreaker(r.circuitConfig)}
 	}
 	for name, chain := range base.chains {
 		if _, exists := r.chains[name]; exists {

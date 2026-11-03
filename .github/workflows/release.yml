@@ -35,10 +35,10 @@ jobs:
           powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
             -File scripts\tests\install-windows.Tests.ps1
 
+  # Build independently; the publish job still requires every installer test.
   release:
     name: Build and Release
     runs-on: ubuntu-latest
-    needs: installer-tests
     strategy:
       matrix:
         include:
@@ -121,7 +121,6 @@ jobs:
   desktop-release:
     name: Build macOS desktop release
     runs-on: macos-14
-    needs: installer-tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -165,30 +164,29 @@ jobs:
           VERSION=$(python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
           mkdir -p ../desktop-release
           cp "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg" "../desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
-          # 签名更新包（应用内自更新）：有密钥才产出，缺失时跳过并提示。
-          find build.noindex/darwin-arm64 -maxdepth 2 \( -name 'update-*.json' -o -name 'EasyGateway-*.tar.gz' \) -exec cp {} ../desktop-release/ \; || true
-      - name: Notarize the macOS DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # 自更新必须同时发布清单与其指向的签名压缩包。
+          cp "build.noindex/darwin-arm64/update-darwin-arm64.json" ../desktop-release/
+          cp "build.noindex/darwin-arm64/easygateway-$VERSION-darwin-arm64.tar.gz" ../desktop-release/
+          go run ../scripts/verify-desktop-update.go mygo.json ../desktop-release darwin-arm64
+      - name: Validate the notarized macOS release
         run: |
           VERSION=$(python3 -c 'import json; print(json.load(open("desktop/mygo.json"))["version"])')
           DMG="desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
-          xcrun notarytool store-credentials "easygateway-notary" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
-          xcrun notarytool submit "$DMG" --keychain-profile "easygateway-notary" --wait
-          xcrun stapler staple "$DMG"
+          APP="desktop/build.noindex/darwin-arm64/EasyGateway.app"
+          # mygo build already submits and staples both the image and app.
+          codesign --verify --verbose=2 "$DMG"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           xcrun stapler validate "$DMG"
+          xcrun stapler validate "$APP"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-darwin-arm64
-          path: desktop-release/*.dmg
+          path: desktop-release/*
           if-no-files-found: error
 
   desktop-release-linux:
     name: Build Linux desktop release
     runs-on: ubuntu-latest
-    needs: installer-tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -220,10 +218,10 @@ jobs:
             dpkg-deb -c "build.noindex/linux-$arch/easygateway_${VERSION}_${arch}.deb" | grep -q "opt/easygateway/easygateway$"
             cp "build.noindex/linux-$arch/easygateway_${VERSION}_${arch}.deb" "../desktop-release/"
             cp "build.noindex/linux-$arch/easygateway-${VERSION}-linux-$arch.tar.gz" "../desktop-release/"
+            cp "build.noindex/linux-$arch/update-linux-$arch.json" "../desktop-release/"
             cp "build.noindex/linux-$arch/install.sh" "../desktop-release/easygateway-desktop-install-linux-$arch.sh"
           done
-          # 签名更新包（应用内自更新）
-          find build.noindex -maxdepth 3 -name 'update-*.json' -exec cp {} ../desktop-release/ \; || true
+          go run ../scripts/verify-desktop-update.go mygo.json ../desktop-release linux-amd64 linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
@@ -232,6 +230,8 @@ jobs:
 
   publish:
     name: Create Release
+    # A branch dispatch is a signing/notarization rehearsal, not a release.
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     needs:
       - installer-tests
@@ -279,9 +279,12 @@ jobs:
           cp scripts/install.bat release/
           cp scripts/install.ps1 release/
           cp artifacts/desktop-darwin-arm64/*.dmg release/
-          # 桌面端签名更新产物（存在才复制）
-          cp artifacts/desktop-darwin-arm64/update-*.json release/ 2>/dev/null || true
-          cp artifacts/desktop-linux/update-*.json release/ 2>/dev/null || true
+          # 桌面端签名更新产物不能缺失，否则已安装客户端无法更新。
+          cp artifacts/desktop-darwin-arm64/easygateway-*-darwin-arm64.tar.gz release/
+          cp artifacts/desktop-darwin-arm64/update-darwin-arm64.json release/
+          cp artifacts/desktop-linux/update-linux-amd64.json release/
+          cp artifacts/desktop-linux/update-linux-arm64.json release/
+          go run scripts/verify-desktop-update.go desktop/mygo.json release darwin-arm64 linux-amd64 linux-arm64
           (cd release && sha256sum gateway-* *.deb *.tar.gz *.dmg providers.yaml default.env.example install.* easygateway-desktop-install-*.sh update-*.json > SHA256SUMS)
           # 列出文件
           ls -lh release/

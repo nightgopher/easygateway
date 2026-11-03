@@ -33,17 +33,19 @@ type AccountChannel struct {
 	Models            []string               `json:"models"`
 }
 type ChannelLogin struct {
-	ID        string `json:"login_id"`
-	Channel   string `json:"channel"`
-	UserCode  string `json:"user_code"`
-	URL       string `json:"login_url"`
-	ExpiresIn int    `json:"expires_in"`
-	Interval  int    `json:"interval"`
+	ID        string       `json:"login_id"`
+	Channel   string       `json:"channel"`
+	UserCode  string       `json:"user_code"`
+	URL       string       `json:"login_url"`
+	ExpiresIn int          `json:"expires_in"`
+	Interval  int          `json:"interval"`
+	OAuth     *clientOAuth `json:"client_oauth"`
+	callback  *localOAuth
 	expiresAt time.Time
 }
 
 func channelTitle(id string) string {
-	names := map[string]string{"minimax": "MiniMax", "cline": "Cline", "lobster": "Lobster", "gemini": "Gemini", "codebuddy": "CodeBuddy", "workbuddy": "WorkBuddy", "trae": "TRAE", "loomy": "Loomy", "raccoon": "Raccoon 小浣熊", "opencode": "OpenCode"}
+	names := map[string]string{"minimax": "MiniMax", "cline": "Cline", "lobster": "Lobster", "gemini": "Gemini", "codebuddy": "CodeBuddy", "workbuddy": "WorkBuddy", "trae": "TRAE", "loomy": "Loomy", "raccoon": "Raccoon 小浣熊", "opencode": "OpenCode", "easycode": "EasyCode（飞书）"}
 	if name := names[id]; name != "" {
 		return name
 	}
@@ -71,6 +73,7 @@ func cancelLoginOn(client *connection.Client, channel, id string) {
 }
 func (a *App) cancelChannelSession() {
 	if a.channelLogin != nil {
+		a.channelLogin.callback.close()
 		cancelLoginOn(a.channelClient, a.channelLogin.Channel, a.channelLogin.ID)
 		a.channelLogin = nil
 		a.channelClient = nil
@@ -126,23 +129,41 @@ func (a *App) startChannelLogin(ch AccountChannel) {
 	a.notice = ""
 	go func() {
 		var login ChannelLogin
-		err := client.JSON(ctx, "POST", "/channels/"+url.PathEscape(ch.ID)+"/login", nil, &login)
+		var callback *localOAuth
+		var payload any
+		var err error
+		if ch.ID == "easycode" {
+			callback, err = listenLocalOAuth()
+			if err == nil {
+				payload = map[string]string{"callback": callback.callback}
+			}
+		}
+		if err == nil {
+			err = client.JSON(ctx, "POST", "/channels/"+url.PathEscape(ch.ID)+"/login", payload, &login)
+		}
 		cancel()
 		dispatch(func() {
 			if seq != a.sequence {
+				callback.close()
 				cancelLoginOn(client, ch.ID, login.ID)
 				return
 			}
 			a.cancel = nil
 			a.busy = ""
 			if err != nil {
+				callback.close()
 				cancelLoginOn(client, ch.ID, login.ID)
 				if !errors.Is(err, context.Canceled) {
 					a.problem = "登录未能发起：" + err.Error()
 				}
 				return
 			}
-			if login.ID == "" || login.Channel != ch.ID || !validLoginURL(login.URL, local) || login.ExpiresIn <= 0 || login.ExpiresIn > 3600 {
+			if callback != nil && err == nil && login.OAuth != nil {
+				login.URL, err = callback.start(*login.OAuth, client, ch.ID, login.ID)
+				login.callback = callback
+			}
+			if err != nil || login.ID == "" || login.Channel != ch.ID || (callback == nil && !validLoginURL(login.URL, local)) || (callback != nil && (login.OAuth == nil || login.URL == "")) || login.ExpiresIn <= 0 || login.ExpiresIn > 3600 {
+				callback.close()
 				cancelLoginOn(client, ch.ID, login.ID)
 				a.problem = "网关返回的授权会话无效，请刷新或更新网关后重试。"
 				return
@@ -177,7 +198,8 @@ func (a *App) pollChannelLogin() {
 	a.launch("等待 "+channelTitle(login.Channel)+" 浏览器授权", remaining, func(ctx context.Context) (func(), error) {
 		for {
 			var result struct {
-				Status string `json:"status"`
+				Status  string `json:"status"`
+				Warning string `json:"warning"`
 			}
 			if err := client.JSON(ctx, "GET", loginPath(login.Channel, login.ID), nil, &result); err != nil {
 				return nil, err
@@ -189,17 +211,22 @@ func (a *App) pollChannelLogin() {
 				}
 				err := client.JSON(ctx, "GET", "/channels", nil, &list)
 				return func() {
+					login.callback.finish()
 					a.channelLogin = nil
 					a.channelClient = nil
 					if err == nil {
 						a.channels = orderChannels(list.Channels)
 						a.notice = channelTitle(login.Channel) + " 已登录；模型调用待验证。"
+						if result.Warning != "" {
+							a.notice = result.Warning
+						}
 					} else {
 						a.notice = "授权完成，请刷新查看账号状态。"
 					}
 				}, nil
 			case "failed", "cancelled":
 				return func() {
+					login.callback.close()
 					a.channelLogin = nil
 					a.channelClient = nil
 					a.problem = "授权未完成或已过期，请重新登录。"

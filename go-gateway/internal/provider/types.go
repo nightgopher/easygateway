@@ -431,6 +431,8 @@ type Config struct {
 	// Auth 为非空时取代 APIKey：每次请求从它取动态令牌，401/403 时调用其
 	// Refresh 续期并重试一次。账号渠道（internal/channel）用它注入 OAuth token。
 	Auth AuthSource
+	// Some account services use 403 for authorization rather than expiry.
+	RefreshUnauthorizedOnly bool
 	// ExtraHeaders 是渠道特有的固定请求头（例如复刻官方客户端的 X-Title）。
 	// 在每个请求上设置，值非空才写入。
 	ExtraHeaders map[string]string

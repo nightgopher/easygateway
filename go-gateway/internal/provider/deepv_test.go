@@ -586,29 +586,61 @@ func TestDeepVToolStreamRoundTrip(t *testing.T) {
 			if err := p.convertStream(strings.NewReader(source.String()), &output, "deepv-glm-5.3-flash"); err != nil {
 				t.Fatal(err)
 			}
+			// 按规范客户端的方式重组：start 只带空 input 占位，参数从
+			// input_json_delta 累积（严格客户端如 DeepSeek harness 只认这条路径）。
 			var blocks []ContentBlock
 			ids := map[string]bool{}
+			started := map[int]ContentBlock{}
+			args := map[int]*strings.Builder{}
 			for _, line := range strings.Split(output.String(), "\n") {
 				if !strings.HasPrefix(line, "data: ") {
 					continue
 				}
 				var event struct {
 					Type         string       `json:"type"`
+					Index        int          `json:"index"`
 					ContentBlock ContentBlock `json:"content_block"`
+					Delta        struct {
+						Type        string `json:"type"`
+						PartialJSON string `json:"partial_json"`
+					} `json:"delta"`
 				}
 				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event); err != nil {
 					t.Fatal(err)
 				}
-				if event.Type == "content_block_start" && event.ContentBlock.Type == "tool_use" {
+				switch {
+				case event.Type == "content_block_start" && event.ContentBlock.Type == "tool_use":
 					b := event.ContentBlock
 					if b.ID == "" || ids[b.ID] {
 						t.Fatalf("missing or repeated id %q", b.ID)
 					}
 					ids[b.ID] = true
-					var input map[string]interface{}
-					if err := json.Unmarshal(b.Input, &input); err != nil || input["path"] != "/tmp/probe.txt" {
-						t.Fatalf("tool input lost: %s (%v)", b.Input, err)
+					started[event.Index] = b
+				case event.Type == "content_block_delta" && event.Delta.Type == "input_json_delta":
+					if _, ok := started[event.Index]; !ok {
+						t.Fatalf("input_json_delta for unknown index %d", event.Index)
 					}
+					if args[event.Index] == nil {
+						args[event.Index] = &strings.Builder{}
+					}
+					args[event.Index].WriteString(event.Delta.PartialJSON)
+				case event.Type == "content_block_stop":
+					b, ok := started[event.Index]
+					if !ok {
+						continue
+					}
+					accumulated := ""
+					if args[event.Index] != nil {
+						accumulated = args[event.Index].String()
+					}
+					var input map[string]interface{}
+					if err := json.Unmarshal([]byte(accumulated), &input); err != nil || input["path"] != "/tmp/probe.txt" {
+						t.Fatalf("tool input lost: %s (%v)", accumulated, err)
+					}
+					// UnmarshalJSON 会保留原始字节到 Raw 且 MarshalJSON 优先输出
+					// Raw，重组后的参数必须同时清掉 Raw 才会生效。
+					b.Raw = nil
+					b.Input = json.RawMessage(accumulated)
 					blocks = append(blocks, b)
 				}
 			}

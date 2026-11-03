@@ -917,6 +917,63 @@ func (r *Router) SetProviderChannel(name, channel string) {
 		runtime.channel = channel
 	}
 }
+
+// DynamicChannelModel is a namespaced, account-discovered provider and its
+// public model metadata. Replacing a catalog must not remove YAML providers.
+type DynamicChannelModel struct {
+	Provider Provider
+	Info     ModelInfo
+}
+
+// ReplaceDynamicChannelModels atomically replaces one channel's discovered
+// models. Existing configuration wins if a user configured the same name.
+func (r *Router) ReplaceDynamicChannelModels(channel string, models []DynamicChannelModel) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	wanted := make(map[string]DynamicChannelModel, len(models))
+	for _, model := range models {
+		if model.Provider == nil || model.Info.ID == "" {
+			continue
+		}
+		name := model.Info.ID
+		if runtime := r.runtime[name]; runtime != nil && runtime.channel != channel {
+			continue
+		}
+		if _, exists := r.chains[name]; exists && r.runtime[name] == nil {
+			continue
+		}
+		wanted[name] = model
+	}
+	for name, runtime := range r.runtime {
+		if runtime.channel != channel {
+			continue
+		}
+		if _, ok := wanted[name]; ok {
+			continue
+		}
+		delete(r.providers, name)
+		delete(r.runtime, name)
+		if chain := r.chains[name]; len(chain) == 1 && chain[0] == name {
+			delete(r.chains, name)
+			delete(r.models, name)
+			delete(r.modelOverrides, name)
+		}
+	}
+	for name, model := range wanted {
+		if r.runtime[name] == nil {
+			r.runtime[name] = &providerRuntime{channel: channel, enabled: true, breaker: NewCircuitBreaker(r.circuitConfig)}
+		}
+		r.providers[name] = model.Provider
+		r.chains[name] = []string{name}
+		model.Info.Capabilities = append([]string(nil), model.Info.Capabilities...)
+		model.Info.InputModalities = append([]string(nil), model.Info.InputModalities...)
+		if override, ok := r.modelOverrides[name]; ok {
+			model.Info.Capabilities = append([]string(nil), override.capabilities...)
+			model.Info.InputModalities = append([]string(nil), override.inputModalities...)
+		}
+		r.models[name] = model.Info
+	}
+}
 func (r *Router) ChannelProviderNames(channel string) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -934,5 +991,29 @@ func (r *Router) ChannelProviderNames(channel string) []string {
 func (r *Router) ResetChannelProviders(channel string) {
 	for _, name := range r.ChannelProviderNames(channel) {
 		_ = r.ResetProvider(name)
+	}
+}
+
+// ResetDeepVAccountProviders clears stale probes for the legacy DeepV aliases
+// whose credential source also changed when the EasyCode account changed.
+func (r *Router) ResetDeepVAccountProviders() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for name, p := range r.providers {
+		deepv, ok := p.(*DeepVProvider)
+		if !ok || !deepv.legacyFallback {
+			continue
+		}
+		runtime := r.runtime[name]
+		if runtime == nil {
+			continue
+		}
+		runtime.breaker.Reset()
+		if runtime.quota != nil {
+			runtime.quota.Reset()
+		}
+		runtime.hasProbe = false
+		runtime.lastProbe = ProbeResult{}
+		runtime.lastProbeAt = time.Time{}
 	}
 }

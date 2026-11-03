@@ -7,6 +7,7 @@
 - **统一接入**：一个端点、一套密钥接入 Claude Code、Codex CLI、Pi 等所有 AI 应用；三协议兼容，支持流式、工具调用与多模态。
 - **能力调度**：按 text/vision 等能力选模型，多级模型链自动 fallback，健康检查与熔断恢复，请求级追踪与聚合指标。
 - **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动；同一渠道多账号在配额耗尽（429）时自动换号重试，全部耗尽才降级。
+- **飞书登录 EasyCode**：在账号渠道用飞书登录，网关会读取该账号可用的 DeepV 模型，并以 `easycode/` 前缀提供给客户端；支持管理远程网关。
 - **用量成本**：daily_stats 按 input/output token 拆分落库，`GET /admin/usage` 按「模型 × 渠道」折算美元成本（单价在 providers.yaml 的 pricing 声明），未计价模型明确列出。
 - **多密钥**：gateway key 给每个客户端发独立密钥，支持模型白名单（glob）与按天/周/月的 token 限额，预算耗尽返回 429 与重置时间，Admin API 管理创建/轮换/停用/删除。
 - **快速接入**：`gateway provider add <preset> <key> --models ...` 一条命令接入 deepseek/moonshot/openrouter 等常见供应商（文本级插入 providers.yaml，注释不动，SIGHUP 热重载生效）。

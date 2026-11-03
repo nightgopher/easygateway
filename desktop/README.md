@@ -9,16 +9,18 @@
 ```bash
 go test -race ./...
 go run github.com/egoist/mygo/cmd/mygo vet
-go run github.com/egoist/mygo/cmd/mygo build
+go run github.com/egoist/mygo/cmd/mygo build -sign - -skip-notarize -skip-dmg
 ```
 
-本机开发使用 `go run github.com/egoist/mygo/cmd/mygo dev`。产物位于 `build.noindex/<os>-<arch>/`，构建缓存和应用包不提交。桌面 CI 仅使用 Go，不安装 Node.js 或构建浏览器界面。
+本机开发使用 `go run github.com/egoist/mygo/cmd/mygo dev`。产物位于 `build.noindex/<os>-<arch>/`，构建缓存和应用包不提交。桌面 CI 仅使用 Go，不安装 Node.js 或构建浏览器界面；CI 测试包使用临时签名，正式 Release 单独使用 Developer ID 签名和公证。
 
 支持 `build -platform darwin/arm64,darwin/amd64,windows/amd64,linux/amd64`。macOS 打包需要 macOS；原生控件由平台图形与文本系统绘制，不要求 WebView2/WebKitGTK。实机验收平台为 macOS arm64，其他平台需另做实机验收。
 
 ## 功能与连接
 
 「账号渠道」提供浏览器授权、授权码复制、自动确认、取消授权和账号移除。无需额外应用密钥的渠道优先显示；缺少客户端配置的渠道展示配置说明并禁用登录。需要本机回调的渠道只允许在本机网关连接中登录。切换主机、离开页面或退出应用会取消未完成的授权，取消不删除已保存账号。登录完成会清除该渠道因缺少凭据产生的熔断状态；「已登录」只表示账号授权完成，模型可用性仍需单独探测和实际调用验证。
+
+EasyCode（飞书）支持登录本机或远程网关。选择飞书组织后，在浏览器完成授权；浏览器回调由桌面端本机处理，一次性授权码通过当前管理连接交给网关，访问令牌和续期令牌只存放在网关主机。授权后可在账号渠道刷新模型目录；客户端通过 `easycode/模型名` 使用该账号有权限的模型。桌面端和网关需要同时更新到支持此功能的版本。
 
 账号行显示的是访问令牌到期时间，不是账号授权的截止时间。有续期凭据时显示「支持自动续期」；调用遇到鉴权失败后，网关会尝试续期并重试。上游撤销授权或续期凭据失效时仍需重新登录。
 
@@ -50,6 +52,6 @@ go run github.com/egoist/mygo/cmd/mygo build
 
 推送版本标签后，Release 流程会验证标签与 `mygo.json` 版本一致，并上传 macOS Apple Silicon 桌面 DMG、网关二进制及 `SHA256SUMS`；任一构建失败时不会发布缺少客户端的 Release。桌面安装包当前仅提供 macOS arm64，其他平台仍需单独验收。
 
-默认构建为 ad-hoc 签名。公开分发需在 `mygo.json` 配置 `macos.signingIdentity` 与 `macos.notarize.keychainProfile`，完成 Developer ID 签名、公证和票据附加；不在仓库保存证书或凭据。桌面客户端支持应用内自更新：`mygo.json` 的 `updates` 指向 GitHub Release（Ed25519 签名清单，密钥与网关 `gateway update` 共用），应用菜单「应用 → 检查更新…」手动检查，默认每日后台自动检查；Release 流水线用 `MYGO_UPDATER_PRIVATE_KEY` 产出签名更新包。签名私钥保存在本机 `~/Library/Application Support/mygo/update-keys/mygo-update.key` 与 GitHub Secrets——**丢失私钥意味着已安装的实例无法再更新到新版本**，请妥善备份。
+上面的本地构建使用 ad-hoc 签名。`mygo.json` 中配置了正式签名身份和公证配置；不带上述开发参数的构建需要相应证书和公证凭据。公开分发由 Release 流程完成 Developer ID 签名、公证和票据附加，不在仓库保存证书或凭据。桌面客户端支持应用内自更新：`mygo.json` 的 `updates` 指向 GitHub Release（Ed25519 签名清单，密钥与网关 `gateway update` 共用），应用菜单「应用 → 检查更新…」手动检查，默认每日后台自动检查；Release 流水线用 `MYGO_UPDATER_PRIVATE_KEY` 产出签名更新包。签名私钥保存在本机 `~/Library/Application Support/mygo/update-keys/mygo-update.key` 与 GitHub Secrets——**丢失私钥意味着已安装的实例无法再更新到新版本**，请妥善备份。
 
 复现问题时，可设置 `GATEWAY_DESKTOP_CONFIG_DIR` 到临时目录以隔离连接配置。应用图标保存在 `resources/icon.png`，由 MyGo 打包为各平台资源。

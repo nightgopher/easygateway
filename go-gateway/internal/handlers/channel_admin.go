@@ -21,9 +21,10 @@ import (
 //
 // 凭据只在本机文件里，接口一律不回传 token 明文：账号列表只给帐号标识与有效期。
 type ChannelAdminHandler struct {
-	registry *channel.Registry
-	router   *provider.Router
-	logger   *log.Logger
+	registry  *channel.Registry
+	router    *provider.Router
+	logger    *log.Logger
+	onChanged func(context.Context, string) error
 
 	mu       sync.Mutex
 	pendings map[string]*pendingLogin
@@ -32,12 +33,13 @@ type ChannelAdminHandler struct {
 // pendingLogin 是一次进行中的登录：设备码请求立刻返回给用户，授权轮询在后台
 // 协程里跑，前端用 id 轮询进度。
 type pendingLogin struct {
-	channel string
-	session channel.LoginSession
-	done    chan struct{}
-	cancel  context.CancelFunc
-	cred    *channel.Credential
-	err     error
+	channel        string
+	session        channel.LoginSession
+	done           chan struct{}
+	cancel         context.CancelFunc
+	cred           *channel.Credential
+	err            error
+	catalogWarning string
 }
 
 // NewChannelAdminHandler 创建渠道管理 handler。registry 为 nil 时所有端点返回 503。
@@ -50,6 +52,9 @@ func NewChannelAdminHandler(registry *channel.Registry, logger *log.Logger) *Cha
 }
 
 func (h *ChannelAdminHandler) SetRouter(r *provider.Router) { h.router = r }
+func (h *ChannelAdminHandler) SetChannelChanged(fn func(context.Context, string) error) {
+	h.onChanged = fn
+}
 
 func (h *ChannelAdminHandler) resolve(c *gin.Context) (channel.Channel, bool) {
 	if h.registry == nil {
@@ -117,7 +122,22 @@ func (h *ChannelAdminHandler) HandleLoginStart(c *gin.Context) {
 	if !ok {
 		return
 	}
-	session, err := ch.BeginLogin(c.Request.Context())
+	var session channel.LoginSession
+	var err error
+	if browser, ok := ch.(interface {
+		BeginClientLogin(context.Context, string) (channel.LoginSession, error)
+	}); ok {
+		var input struct {
+			Callback string `json:"callback"`
+		}
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请使用最新版桌面端发起登录"})
+			return
+		}
+		session, err = browser.BeginClientLogin(c.Request.Context(), input.Callback)
+	} else {
+		session, err = ch.BeginLogin(c.Request.Context())
+	}
 	if err != nil {
 		h.logger.Printf("channel %s login start failed: %v", ch.Name(), err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -146,6 +166,11 @@ func (h *ChannelAdminHandler) HandleLoginStart(c *gin.Context) {
 		if err == nil && h.router != nil {
 			h.router.ResetChannelProviders(ch.Name())
 		}
+		if err == nil && h.onChanged != nil {
+			if h.onChanged(ctx, ch.Name()) != nil {
+				pending.catalogWarning = "已登录，但模型目录刷新失败；请稍后手动刷新。"
+			}
+		}
 		close(pending.done)
 		// Retain terminal results briefly for the desktop poll, then release abandoned sessions.
 		time.AfterFunc(time.Minute, func() {
@@ -157,7 +182,7 @@ func (h *ChannelAdminHandler) HandleLoginStart(c *gin.Context) {
 		})
 	}()
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"login_id":                  id,
 		"channel":                   ch.Name(),
 		"user_code":                 dc.UserCode,
@@ -166,7 +191,48 @@ func (h *ChannelAdminHandler) HandleLoginStart(c *gin.Context) {
 		"login_url":                 dc.LoginURL(),
 		"expires_in":                int(timeout.Seconds()),
 		"interval":                  int(dc.Interval.Seconds()),
+	}
+	if browser, ok := session.(interface{ ClientOAuth() channel.ClientOAuth }); ok {
+		response["client_oauth"] = browser.ClientOAuth()
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+// HandleLoginCallback receives the one-use browser authorization code over
+// the authenticated admin connection. Access and refresh tokens stay server-side.
+func (h *ChannelAdminHandler) HandleLoginCallback(c *gin.Context) {
+	ch, ok := h.resolve(c)
+	if !ok {
+		return
+	}
+	h.mu.Lock()
+	pending, found := h.pendings[c.Param("id")]
+	h.mu.Unlock()
+	if !found || pending.channel != ch.Name() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "登录会话不存在或已结束"})
+		return
+	}
+	session, ok := pending.session.(interface {
+		Complete(context.Context, string, string, string) error
 	})
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "此渠道不接受浏览器回调"})
+		return
+	}
+	var input struct {
+		State string `json:"state"`
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if c.ShouldBindJSON(&input) != nil || len(input.State) > 256 || len(input.Error) > 512 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "授权回调无效"})
+		return
+	}
+	if err := session.Complete(c.Request.Context(), input.State, input.Code, input.Error); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "授权未完成，请重新登录"})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"status": "pending"})
 }
 
 // HandleLoginPoll GET /admin/channels/:channel/login/:id
@@ -203,6 +269,7 @@ func (h *ChannelAdminHandler) HandleLoginPoll(c *gin.Context) {
 			"channel":  ch.Name(),
 			"account":  accountNickname(pending.cred),
 			"accounts": ch.Accounts().Credentials(),
+			"warning":  pending.catalogWarning,
 		})
 	default:
 		c.JSON(http.StatusAccepted, gin.H{"status": "pending"})
@@ -219,6 +286,9 @@ func (h *ChannelAdminHandler) HandleLogout(c *gin.Context) {
 		h.logger.Printf("channel %s logout failed: %v", ch.Name(), err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if h.onChanged != nil {
+		_ = h.onChanged(c.Request.Context(), ch.Name())
 	}
 	c.JSON(http.StatusOK, gin.H{"channel": ch.Name(), "logged_in": false, "accounts": ch.Accounts().Credentials()})
 }
@@ -238,7 +308,31 @@ func (h *ChannelAdminHandler) HandleRemoveAccount(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if h.onChanged != nil {
+		_ = h.onChanged(c.Request.Context(), ch.Name())
+	}
 	c.JSON(http.StatusOK, gin.H{"channel": ch.Name(), "accounts": ch.Accounts().Credentials()})
+}
+
+// HandleRefreshModels lets an administrator retry an account catalog refresh.
+func (h *ChannelAdminHandler) HandleRefreshModels(c *gin.Context) {
+	ch, ok := h.resolve(c)
+	if !ok {
+		return
+	}
+	if ch.Name() != "easycode" || h.onChanged == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "此渠道不支持刷新模型目录"})
+		return
+	}
+	if ch.Accounts().Len() == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请先登录 EasyCode"})
+		return
+	}
+	if err := h.onChanged(c.Request.Context(), ch.Name()); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "模型目录刷新失败，请检查登录状态和网络后重试"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "complete"})
 }
 
 // accountNickname 返回新登录账号的展示名，供前端即时反馈。
@@ -273,6 +367,13 @@ func (h *ChannelAdminHandler) HandleLoginCancel(c *gin.Context) {
 		h.mu.Unlock()
 		c.JSON(http.StatusNotFound, gin.H{"error": "登录会话不存在"})
 		return
+	}
+	if found {
+		if cancelable, ok := pending.session.(interface{ Cancel() bool }); ok && !cancelable.Cancel() {
+			h.mu.Unlock()
+			c.JSON(http.StatusOK, gin.H{"status": "complete"})
+			return
+		}
 	}
 	if found {
 		delete(h.pendings, id)

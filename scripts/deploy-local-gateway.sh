@@ -89,6 +89,24 @@ if git -C "${REPO_ROOT}" status --porcelain --untracked-files=normal | grep -q .
 else
     SOURCE_STATE=clean
 fi
+UNTRACKED_SOURCE_SHA256=$(python3 - "${REPO_ROOT}" <<'PY'
+import hashlib
+from pathlib import Path
+import subprocess
+import sys
+
+root = Path(sys.argv[1])
+paths = subprocess.check_output(
+    ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard", "-z", "--", "go-gateway"]
+).split(b"\0")
+digest = hashlib.sha256()
+for raw in sorted(path for path in paths if path):
+    path = root / raw.decode("utf-8", "surrogateescape")
+    if path.is_file() and not path.is_symlink():
+        digest.update(raw + b"\0" + hashlib.sha256(path.read_bytes()).digest())
+print(digest.hexdigest())
+PY
+)
 
 cat > "${CANDIDATE_DIR}/deploy-info.txt" <<EOF
 source_branch=${SOURCE_BRANCH:-detached}
@@ -97,6 +115,7 @@ source_state=${SOURCE_STATE}
 built_at_utc=${BUILD_STAMP}
 binary_sha256=$(shasum -a 256 "${CANDIDATE_BINARY}" | awk '{print $1}')
 tracked_source_diff_sha256=$(git -C "${REPO_ROOT}" diff --binary HEAD | shasum -a 256 | awk '{print $1}')
+untracked_gateway_source_sha256=${UNTRACKED_SOURCE_SHA256}
 deploy_script_sha256=$(shasum -a 256 "${SCRIPT_DIR}/deploy-local-gateway.sh" | awk '{print $1}')
 EOF
 
@@ -130,6 +149,12 @@ env = {
     "HOME": os.path.expanduser("~"),
     "PORT": str(port),
     "PI_GO_DATA_DIR": temp_data,
+    # The candidate must not refresh or overwrite the real channel accounts.
+    "LLM_GATEWAY_HOME": os.path.join(temp_data, "gateway-home"),
+    "CHATGPT_AUTH_FILE": os.path.join(temp_data, "no-chatgpt-auth.json"),
+    "COPILOT_TOKEN": "",
+    "COPILOT_GITHUB_TOKEN": "",
+    "MODEL_HEALTH_INTERVAL_SECONDS": "0",
     "EASYGATEWAY_MASTER_KEY": token,
     "ADMIN_TOKEN": token,
 }
@@ -177,6 +202,11 @@ try:
         status, _ = request(path, authenticated=True)
         if status != 200:
             raise RuntimeError(f"{path} failed: status={status}")
+
+    status, body = request("/admin/channels", authenticated=True)
+    channels = json.loads(body).get("channels", [])
+    if status != 200 or not any(item.get("channel") == "easycode" for item in channels):
+        raise RuntimeError("EasyCode account channel missing from candidate")
 
     status, prompt_body = request("/admin/assistant/prompt", authenticated=True)
     if status == 503 and "助理未启用" in prompt_body.decode(errors="replace"):

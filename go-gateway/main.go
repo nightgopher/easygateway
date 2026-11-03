@@ -120,7 +120,7 @@ func main() {
 	// 账号渠道（第二类）：交互式登录取得凭据的渠道。必须先于 providers.yaml
 	// 装载注册工厂，因为 type: channel 的条目在装载时就要构造 provider 实例。
 	channelRegistry := channel.NewRegistry()
-	setupChannelProviders(router, channelRegistry, logger)
+	easycodeChannel := setupChannelProviders(router, channelRegistry, logger)
 
 	// Environment-backed integrations share their existing clients across reloads.
 	nativeProviders := provider.NewRouter(logger)
@@ -136,7 +136,7 @@ func main() {
 		setupCopilotProviders(nativeProviders, cfg, logger)
 	}
 	if cfg.DeepVEnabled {
-		setupDeepVProviders(nativeProviders, cfg, logger)
+		setupDeepVProviders(nativeProviders, cfg, logger, easycodeChannel.Accounts())
 	}
 	corsPolicy := corspolicy.New()
 	configPath := "providers.yaml"
@@ -144,6 +144,7 @@ func main() {
 		candidate.IncludeMissingConfiguration(nativeProviders)
 		return nil
 	})
+	easycodeCatalog := newEasyCodeCatalog(easycodeChannel, router, nativeProviders, reloader, cfg.DeepVWorkDir, logger)
 	reloader.SetCORSPolicy(corsPolicy)
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		setupDefaultProviders(router, cfg, logger)
@@ -152,6 +153,7 @@ func main() {
 		logger.Fatalf("Failed to load providers.yaml: %v", err)
 	}
 	watchConfigReload(shutdownSignals, reloader, logger)
+	go easycodeCatalog.run(shutdownSignals)
 	startModelDoctor(shutdownSignals, router, time.Duration(cfg.ModelHealthIntervalSeconds)*time.Second, cfg.ModelHealthProbeAnonymous, logger)
 
 	// 创建 Gin 引擎
@@ -212,6 +214,7 @@ func main() {
 	fsHandler := handlers.NewFSHandler()
 	channelAdminHandler := handlers.NewChannelAdminHandler(channelRegistry, logger)
 	channelAdminHandler.SetRouter(router)
+	channelAdminHandler.SetChannelChanged(easycodeCatalog.channelChanged)
 
 	// 常驻助理（EasyAgent SDK）：LLM 调用回环走网关自身，吃同一套路由与指标。
 	var assistantHandler *handlers.AssistantHandler
@@ -349,6 +352,8 @@ func main() {
 		admin.GET("/channels/:channel", channelAdminHandler.HandleStatus)
 		admin.POST("/channels/:channel/login", channelAdminHandler.HandleLoginStart)
 		admin.GET("/channels/:channel/login/:id", channelAdminHandler.HandleLoginPoll)
+		admin.POST("/channels/:channel/login/:id/callback", channelAdminHandler.HandleLoginCallback)
+		admin.POST("/channels/:channel/models/refresh", channelAdminHandler.HandleRefreshModels)
 		admin.DELETE("/channels/:channel/login/:id", channelAdminHandler.HandleLoginCancel)
 		admin.DELETE("/channels/:channel", channelAdminHandler.HandleLogout)
 		admin.DELETE("/channels/:channel/accounts/:index", channelAdminHandler.HandleRemoveAccount)
@@ -1110,23 +1115,29 @@ func setupDefaultProviders(router *provider.Router, cfg *config.Config, logger *
 
 // setupDeepVProviders 设置 DeepV Server 提供商（EasyCode/DeepVCode 的聚合后端）。
 // 上游模型使用绑定的模型 ID；模型与独立路由在此注册。
-func setupDeepVProviders(router *provider.Router, cfg *config.Config, logger *log.Logger) {
+func setupDeepVProviders(router *provider.Router, cfg *config.Config, logger *log.Logger, sources ...provider.AuthSource) {
 	workDir := cfg.DeepVWorkDir
 	if workDir == "" {
 		workDir, _ = os.Getwd()
 	}
 	deepvURL := "https://api-code.deepvlab.ai/v1/chat/messages"
+	var account provider.AuthSource
+	if len(sources) > 0 {
+		account = sources[0]
+	}
+	newProvider := func(name, model string) *provider.DeepVProvider {
+		config := &provider.Config{Name: name, URL: deepvURL, Auth: account, RefreshUnauthorizedOnly: true}
+		p := provider.NewDeepVProvider(config, workDir, model)
+		if account != nil {
+			p.AllowLegacyCredential()
+		}
+		return p
+	}
 
 	// provider 实例名用上游模型 ID。注意智谱同样提供 glm-5.3-flash，两家实例名
 	// 会撞车并互相覆盖，因此 DeepV 这几个统一加 deepv- 前缀区分。
-	router.RegisterProvider("deepseek-flash", provider.NewDeepVProvider(&provider.Config{
-		Name: "deepseek-flash",
-		URL:  deepvURL,
-	}, workDir, "deepseek-flash"))
-	router.RegisterProvider("deepv-glm-5.3-flash", provider.NewDeepVProvider(&provider.Config{
-		Name: "deepv-glm-5.3-flash",
-		URL:  deepvURL,
-	}, workDir, "glm-5.3-flash"))
+	router.RegisterProvider("deepseek-flash", newProvider("deepseek-flash", "deepseek-flash"))
+	router.RegisterProvider("deepv-glm-5.3-flash", newProvider("deepv-glm-5.3-flash", "glm-5.3-flash"))
 
 	router.RegisterChain("deepseek-flash", []string{"deepseek-flash"})
 	// DeepV 上游模型名是 deepseek-flash，历史客户端用的是 deepseek-v4.1-flash。
@@ -1164,10 +1175,7 @@ func setupDeepVProviders(router *provider.Router, cfg *config.Config, logger *lo
 
 	// 独立模型入口沿用 DeepV 的请求总量预算，不改变 coding 降级顺序。
 	for _, modelID := range []string{"claude-haiku-5-5", "mimo-v2.6-pro"} {
-		router.RegisterProvider(modelID, provider.NewDeepVProvider(&provider.Config{
-			Name: modelID,
-			URL:  deepvURL,
-		}, workDir, modelID))
+		router.RegisterProvider(modelID, newProvider(modelID, modelID))
 		router.RegisterChain(modelID, []string{modelID})
 		router.RegisterModel(provider.ModelInfo{
 			ID:              modelID,

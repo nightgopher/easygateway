@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,11 +21,15 @@ import (
 // the local CLI login rather than an API key. The gateway reads the JWT written
 // by either EasyCode or the legacy DeepVCode CLI.
 type DeepVProvider struct {
-	config     *Config
-	client     *http.Client
-	tokenCache *jwtToken
-	workDir    string // 工作目录，用于获取 Git 信息
-	boundModel string // 绑定的模型名
+	config         *Config
+	client         *http.Client
+	tokenCache     *jwtToken
+	tokenMu        sync.Mutex
+	workDir        string // 工作目录，用于获取 Git 信息
+	boundModel     string // 绑定的模型名
+	capabilities   []string
+	privateAccount bool
+	legacyFallback bool
 }
 
 // jwtToken JWT token 结构（与 ~/.easycode-user/jwt-token.json 一致）
@@ -146,10 +151,25 @@ func NewDeepVProvider(config *Config, workDir string, boundModel string) *DeepVP
 	transport.ResponseHeaderTimeout = timeout
 	return &DeepVProvider{
 		config:     config,
-		client:     &http.Client{Transport: transport},
+		client:     &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		workDir:    workDir,
 		boundModel: boundModel,
 	}
+}
+
+// ConfigureAccountModel applies catalog capabilities and avoids sending the
+// gateway host's Git metadata with an account-model request.
+func (p *DeepVProvider) ConfigureAccountModel(capabilities []string) *DeepVProvider {
+	p.capabilities = append([]string(nil), capabilities...)
+	p.privateAccount = true
+	return p
+}
+
+// AllowLegacyCredential keeps existing DeepV aliases usable with the old CLI
+// token when no EasyCode account is logged in.
+func (p *DeepVProvider) AllowLegacyCredential() *DeepVProvider {
+	p.legacyFallback = true
+	return p
 }
 
 func (p *DeepVProvider) Name() string       { return p.config.Name }
@@ -157,11 +177,15 @@ func (p *DeepVProvider) URL() string        { return p.config.URL }
 func (p *DeepVProvider) APIKey() string     { return p.config.APIKey }
 func (p *DeepVProvider) UseBearer() bool    { return p.config.UseBearer }
 func (p *DeepVProvider) BoundModel() string { return p.boundModel }
+func (p *DeepVProvider) Available() bool    { return p.legacyFallback || p.config.authAvailable() }
 
 // Capabilities declares model metadata for /v1/models and capability-aware
 // routing. The bound DeepV model is natively multimodal, so vision is always
 // advertised -- image requests must never land on a text-only view of it.
 func (p *DeepVProvider) Capabilities() []string {
+	if p.capabilities != nil {
+		return append([]string(nil), p.capabilities...)
+	}
 	return []string{CapabilityText, CapabilityVision, CapabilityToolCall, CapabilityStreaming, CapabilityReasoning}
 }
 
@@ -177,15 +201,7 @@ func (p *DeepVProvider) ForwardRequest(ctx context.Context, req *Request) (*Resp
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.URL, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	if err := p.setHeaders(httpReq); err != nil {
-		return nil, fmt.Errorf("set headers: %w", err)
-	}
-
-	resp, err := p.client.Do(httpReq)
+	resp, err := p.send(ctx, p.config.URL, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
@@ -197,7 +213,7 @@ func (p *DeepVProvider) ForwardRequest(ctx context.Context, req *Request) (*Resp
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, rewriteDeepVQuotaError(NewHTTPError(p.Name(), resp, respBody))
+		return nil, rewriteDeepVQuotaError(NewHTTPError(p.Name(), resp, redactDeepVToken(resp, respBody)))
 	}
 
 	return p.parseResponse(respBody, req.Model)
@@ -694,20 +710,26 @@ func (p *DeepVProvider) parseResponse(body []byte, model string) (*Response, err
 }
 
 // setHeaders 设置请求头，包括认证和 Git 信息
-func (p *DeepVProvider) setHeaders(req *http.Request) error {
+func (p *DeepVProvider) setHeaders(req *http.Request, useAccount bool) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "DeepVCode/CLI/1.0.338 (darwin; arm64)")
 	req.Header.Set("X-Client-Version", "1.0.338")
 
-	token, err := p.getAccessToken()
-	if err != nil {
-		return fmt.Errorf("get access token: %w", err)
+	var token string
+	if useAccount {
+		token = p.config.Auth.BearerToken()
+	} else {
+		var err error
+		token, err = p.getAccessToken()
+		if err != nil {
+			return fmt.Errorf("get access token: %w", err)
+		}
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	if gitInfo := p.getGitInfo(); gitInfo != nil {
+	if gitInfo := p.getGitInfoIfAllowed(useAccount); gitInfo != nil {
 		if remotesJSON, err := json.Marshal(gitInfo.Remotes); err == nil {
 			req.Header.Set("X-Git-Remotes", string(remotesJSON))
 		}
@@ -719,9 +741,29 @@ func (p *DeepVProvider) setHeaders(req *http.Request) error {
 	return nil
 }
 
+func (p *DeepVProvider) getGitInfoIfAllowed(useAccount bool) *gitInfo {
+	if p.privateAccount || useAccount {
+		return nil
+	}
+	return p.getGitInfo()
+}
+
+func redactDeepVToken(resp *http.Response, body []byte) []byte {
+	if resp == nil || resp.Request == nil {
+		return body
+	}
+	token := strings.TrimPrefix(resp.Request.Header.Get("Authorization"), "Bearer ")
+	if token == "" {
+		return body
+	}
+	return bytes.ReplaceAll(body, []byte(token), []byte("[redacted]"))
+}
+
 // getAccessToken 获取访问令牌，缓存到过期为止。
 // 优先读取现代 Easy Code 路径，其次回退到旧版 DeepVCode 路径。
 func (p *DeepVProvider) getAccessToken() (string, error) {
+	p.tokenMu.Lock()
+	defer p.tokenMu.Unlock()
 	nowSec := time.Now().Unix()
 	if p.tokenCache != nil {
 		expiresAt := p.tokenCache.ExpiresAt
@@ -839,15 +881,7 @@ func (p *DeepVProvider) ForwardStream(ctx context.Context, req *Request, w io.Wr
 
 	streamURL := strings.Replace(p.config.URL, "/messages", "/stream", 1)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, streamURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	if err := p.setHeaders(httpReq); err != nil {
-		return fmt.Errorf("set headers: %w", err)
-	}
-
-	resp, err := p.client.Do(httpReq)
+	resp, err := p.send(ctx, streamURL, reqBody)
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)
 	}
@@ -855,10 +889,26 @@ func (p *DeepVProvider) ForwardStream(ctx context.Context, req *Request, w io.Wr
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return rewriteDeepVQuotaError(NewHTTPError(p.Name(), resp, b))
+		return rewriteDeepVQuotaError(NewHTTPError(p.Name(), resp, redactDeepVToken(resp, b)))
 	}
 
 	return p.convertStream(resp.Body, w, req.Model)
+}
+
+// send preserves the legacy local CLI credential path while allowing account
+// channels to refresh on an expired token and retry before a response streams.
+func (p *DeepVProvider) send(ctx context.Context, url string, body []byte) (*http.Response, error) {
+	if p.config.Auth != nil && (!p.legacyFallback || p.config.Auth.BearerToken() != "") {
+		return postWithAuth(ctx, p.client, p.Name(), url, p.config, func(req *http.Request) { _ = p.setHeaders(req, true) }, body)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	if err := p.setHeaders(req, false); err != nil {
+		return nil, fmt.Errorf("set headers: %w", err)
+	}
+	return p.client.Do(req)
 }
 
 // convertStream 转换 GenAI SSE 流为 Anthropic SSE 流
@@ -1003,7 +1053,15 @@ func (p *DeepVProvider) convertStream(r io.Reader, w io.Writer, model string) er
 	flushTextBlock()
 	flushThinkingBlock()
 	for _, block := range blocks {
-		closeBlock(openBlock(map[string]interface{}{"type": "tool_use", "id": block.ID, "name": block.Name, "input": block.Input}))
+		// Anthropic 规范：tool_use 块在 content_block_start 里只带空 input 占位，
+		// 参数经 input_json_delta 下发。严格按规范累积的客户端（如 DeepSeek
+		// harness）不读 start 里的 input，这里塞完整参数会被当成空参数执行。
+		idx := openBlock(map[string]interface{}{"type": "tool_use", "id": block.ID, "name": block.Name, "input": map[string]interface{}{}})
+		p.writeAnthropicEvent(writer, "content_block_delta", map[string]interface{}{
+			"index": idx,
+			"delta": map[string]interface{}{"type": "input_json_delta", "partial_json": string(block.Input)},
+		})
+		closeBlock(idx)
 	}
 	if len(blocks) > 0 {
 		stopReason = "tool_use"

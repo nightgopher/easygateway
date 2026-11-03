@@ -60,6 +60,9 @@ func (a *App) channelsView(c *ui.Context) {
 						label = "添加账号"
 					}
 					ui.Button(c, label).Label(label + " " + name).Disabled(a.busy != "" || a.channelLogin != nil || !ch.canLogin(a.localConnection())).OnClick(func() { a.startChannelLogin(ch) })
+					if ch.ID == "easycode" && ch.LoggedIn {
+						ui.Button(c, "刷新模型").Disabled(a.busy != "" || a.channelLogin != nil).OnClick(func() { a.mutate("正在刷新 EasyCode 模型", "POST", "/channels/easycode/models/refresh", nil) })
+					}
 					if ch.NeedsClientConfig {
 						ui.Button(c, "配置说明").Label(name + " 配置说明").OnClick(func() {
 							if a.channelSetup == ch.ID {
