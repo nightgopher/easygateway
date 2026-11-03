@@ -1,8 +1,7 @@
 # 模型提供商配置
 # 命名规则：
 #   - provider 实例名与对外模型名都用上游模型 ID，不设置别名
-#   - 不同供应商提供同名模型时（如智谱与 DeepV 都有 glm-5.3-flash），
-#     后注册的那个用 供应商-模型 限定，保证实例名唯一
+#   - 不同供应商提供同名模型时，后注册的那个用 供应商-模型 限定，保证实例名唯一
 #   - 客户端只调用 chains 里定义的链，链内按顺序持续降级
 
 # 留空保留所有网页来源均可跨域访问；配置后仅放行这些 HTTP(S) origin。
@@ -115,6 +114,9 @@ providers:
       - id: BAAI/bge-m3
         capabilities: [embedding]
         description: "免费嵌入模型（1024 维），知识库向量化用"
+      # 轻量语音转写（SenseVoice）：短语音、快速出稿场景（沿用本机运行时已有条目）
+      - id: FunAudioLLM/SenseVoiceSmall
+        capabilities: [audio_transcription, text]
       # 日常主力：准确流畅，常规录音转写
       - id: XingChenAGI/XingChenASR-V3.2
         capabilities: [audio_transcription]
@@ -127,591 +129,41 @@ providers:
       - id: XingChenAGI/XingChenASR-Diarize-V3.0
         capabilities: [audio_transcription]
         description: "多人会议档；响应含 segments 说话人分段与时间戳"
-  # ── 账号渠道（第二类）─────────────────────────────────────────────────────
-  # 凭据不是 api_key，而是复刻官方客户端登录拿到的 OAuth 令牌：登录由网关内置的
-  # 设备码流程完成（管理面板 POST /admin/channels/<渠道>/login），凭据只落本机
-  # <LLM_GATEWAY_HOME>/channels/ 下的 0600 文件。这里的 models 只声明「这个渠道
-  # 对外提供哪些模型」，不提供密钥。
-  #
-  # ⚠️ 这些上游是各家产品的私有端点，用官方客户端凭据直接调用属于非官方用法，
-  # 可能违反其服务条款并导致账号被封。仅用于本机个人测试，不要对外分发。
-  - name: minimax
-    type: channel
-    channel: minimax
-    # 上游是 Anthropic Messages 协议，网关复用 AnthropicProvider 的传输与 SSE 透传。
+  # 硅基流动 chat：DeepSeek V4.1 Flash 走硅基流动 keyed 渠道，是 coding 链里
+  # deepseek 档的稳定供给。openai 类型 provider 的 url 就是 chat POST 端点，
+  # 与上面 siliconflow（embeddings/转写透传用裸源站）分开注册，互不影响。
+  # 2026-11-03 实测真实对话可用。
+  - name: siliconflow-chat
+    type: openai
+    url: https://api.siliconflow.cn/v1/chat/completions
+    api_key_env: SILICONFLOW_API_KEY
     models:
-      # M3.1 强制思考：上游对 thinking:disabled 直接 400，网关已在请求体里
-      # 统一改写为 adaptive（见 channel.MiniMaxTransformRequest）。
-      - id: MiniMax-M3.1-Flash-Preview
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-      - id: MiniMax-M3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-      - id: MiniMax-M2.7
+      - id: deepseek-ai/DeepSeek-V4.1-Flash
         capabilities: [text, tool_calling, streaming, reasoning]
-      - id: MiniMax-M2.7-highspeed
-        capabilities: [text, tool_calling, streaming, reasoning]
-  - name: cline
-    type: channel
-    channel: cline
-    # 上游是 OpenAI Chat Completions 协议；令牌需带 workos: 前缀，网关在渠道层
-    # 已处理。以下为当前免费的三个模型。
-    models:
-      - id: stealth/space-bunny-alpha
-        capabilities: [text, vision, tool_calling, streaming]
-        input_modalities: [text, image]
-      - id: cline-free/mimo-v2.6-flash
-        capabilities: [text, vision, tool_calling, streaming]
-        input_modalities: [text, image]
-      - id: cline-free/muse-spark-1.3-contributor
-        capabilities: [text, vision, tool_calling, streaming]
-        input_modalities: [text, image]
-  # LobsterAI（有道）：登录是授权码 + 本机回环回调（管理面板发起后返回 login_url，
-  # 在浏览器打开完成授权，网关本地端口接收 ?code=）。推理走 OpenAI Chat Completions
-  # 协议（/api/proxy/v1/chat/completions），故复用 OpenAIProvider。
-  - name: lobster
-    type: channel
-    channel: lobster
-    # 模型清单来自客户端自带的 fallback 目录（LOBSTERAI_FALLBACK_MODELS）。
-    # 上游按套餐提供其中一部分，网关按这份清单注册；某个模型对账号无权限时会被
-    # 上游拒绝，链上自动降级到下一档。
-    models:
-      - id: kimi-k2.7-code
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: kimi-k2.7-code-highspeed
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: kimi-k2.6
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: kimi-k2.5
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-      - id: deepseek-v4-flash
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: deepseek-v4-pro
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: qwen3.7-max
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: qwen3.7-plus
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: glm-5.2
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: glm-5.1
-        capabilities: [text, tool_calling, streaming, reasoning]
-      - id: doubao-seed-2-1-pro-260628
-        capabilities: [text, tool_calling, streaming, reasoning]
-  # Gemini Code Assist（CloudCode / Antigravity）：登录是 Google OAuth 授权码 +
-  # 本机 localhost 回环回调。推理端点是 CloudCode 私有协议
-  # （v1internal:streamGenerateContent），既不是 OpenAI 也不是 Anthropic，由
-  # provider.CloudCodeProvider 做信封与 SSE 翻译。
-  #
-  # OAuth 客户端凭据不进仓库：需先注册 Google OAuth 桌面应用客户端（回调地址
-  # http://localhost:<port>/oauth-callback），再把 client_id/client_secret 通过
-  # 环境变量 GEMINI_CHANNEL_CLIENT_ID/GEMINI_CHANNEL_CLIENT_SECRET 或
-  # <LLM_GATEWAY_HOME>/gemini-client.json 提供，否则发起登录会直接报错。
-  #
-  # 模型名统一带 `cloudcode/` 前缀：现有 CLIProxyAPI 的 antigravity 供应商已占用
-  # 裸名 `gemini-3.8-flash-high`，网关里同名模型会互相覆盖注册，加前缀后才能两路
-  # 并存。前缀属网关侧命名，发往上游前会被 provider 剥掉。
-  #
-  # 模型名末尾的思考档（-low/-medium/-high/-tiered）决定 thinkingBudget
-  # （low=1000 / medium=4000 / high=10000 / tiered=自适应），发往上游的名字就是
-  # gemini-3.8-flash-<档>（与 antigravity 供应商的档位命名一致，属上游真名）。
-  # 不带后缀时默认 medium，即上游收到 gemini-3.8-flash-medium。
-  - name: gemini
-    type: channel
-    channel: gemini
-    models:
-      - id: cloudcode/gemini-3.8-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        description: "Gemini 3.8 Flash（CloudCode 渠道），思考档默认 medium"
-      - id: cloudcode/gemini-3.8-flash-low
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        description: "Gemini 3.8 Flash（CloudCode 渠道），低思考档（更快）"
-      - id: cloudcode/gemini-3.8-flash-medium
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-      - id: cloudcode/gemini-3.8-flash-high
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        description: "Gemini 3.8 Flash（CloudCode 渠道），高思考档；与 antigravity 的裸名档位靠前缀区分"
-      - id: cloudcode/gemini-3.8-flash-tiered
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        description: "Gemini 3.8 Flash（CloudCode 渠道），自适应思考档（上游自行决定预算）"
+        description: "DeepSeek V4.1 Flash（硅基流动 keyed），coding 链 deepseek 档"
 
-  # CodeBuddy（腾讯）/ WorkBuddy（国际版）：两者共用同一套私有登录与推理协议，
-  # 网关里是同一个渠道实现（channel.BuddyChannel）加两张产品常量表。登录形态是
-  # 「申请 state + 轮询」，既不是设备码也没有回环回调：网关先向
-  # /v2/plugin/auth/state 取 state 与登录地址，交给用户在浏览器打开，随后用同一个
-  # state 轮询 /v2/plugin/auth/token 拿令牌（未就绪回 code=11217）、再轮询
-  # /v2/plugin/login/account 补账号信息（未就绪回 code=12151）——这两个码属正常
-  # 等待，不是失败。推理走 OpenAI Chat Completions 协议（/v2/chat/completions），
-  # 故复用 OpenAIProvider，渠道层只负责令牌、复刻头与续期。
-  #
-  # 两个渠道的模型名都带自己的前缀（codebuddy/、workbuddy/）：这两家的模型清单与
-  # 既有供应商大量重名（glm-5.3、glm-5.2、kimi-k2.6、deepseek-v4-flash…），网关按
-  # 模型 ID 注册路由，裸名会覆盖既有 provider。前缀属网关侧命名，发往上游前由
-  # channel.BuddyChannel.TransformRequest 剥掉。
-  #
-  # WorkBuddy 的 User-Agent 按模型家族切换：GPT/Gemini/Claude 系用国际版形态，
-  # glm/hy/kimi/minimax 系用国内客户端形态，网关在渠道层按模型名解析。
-  # 下面的 max_input_tokens/max_output_tokens 取自官方客户端自带的模型元数据。
-  - name: codebuddy
-    type: channel
-    channel: codebuddy
-    # 模型清单来自客户端自带目录（CODEBUDDY_FALLBACK_MODELS）。
-    models:
-      - id: codebuddy/hy4-preview
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 64000
-      - id: codebuddy/hy3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 192000
-        max_output_tokens: 64000
-      - id: codebuddy/hy3-x
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 192000
-        max_output_tokens: 64000
-      - id: codebuddy/deepseek-v4.1-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: codebuddy/deepseek-v4-pro
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: codebuddy/deepseek-v4-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 50000
-      - id: codebuddy/glm-5.3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 64000
-      - id: codebuddy/glm-5.3-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 32000
-      - id: codebuddy/glm-5.2
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 64000
-      - id: codebuddy/glm-5.1
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 48000
-      - id: codebuddy/glm-5v-turbo
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: codebuddy/kimi-k3-1
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 32000
-      - id: codebuddy/kimi-k2.8-preview
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 64000
-      - id: codebuddy/kimi-k2.7
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 256000
-        max_output_tokens: 32000
-      - id: codebuddy/kimi-k2.6
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 256000
-        max_output_tokens: 32000
-      - id: codebuddy/minimax-m3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 512000
-        max_output_tokens: 64000
-  - name: workbuddy
-    type: channel
-    channel: workbuddy
-    # 模型清单来自客户端自带目录。前五项是服务端档位别名（default-model 等），
-    # 由上游映射到具体模型，保留以复刻官方清单。
-    models:
-      - id: workbuddy/default-model
-        capabilities: [text, vision, tool_calling, streaming]
-        input_modalities: [text, image]
-        max_input_tokens: 176000
-        max_output_tokens: 24000
-        description: "WorkBuddy 服务端默认档别名，由上游映射到具体模型"
-      - id: workbuddy/fast-model
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 32000
-        description: "WorkBuddy 快速档别名，由上游映射到具体模型"
-      - id: workbuddy/balanced-model
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 256000
-        max_output_tokens: 32000
-        description: "WorkBuddy 均衡档别名，由上游映射到具体模型"
-      - id: workbuddy/primary-model
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 272000
-        max_output_tokens: 72000
-        description: "WorkBuddy 主力档别名，由上游映射到具体模型"
-      - id: workbuddy/deep-model
-        capabilities: [text, vision, tool_calling, streaming]
-        input_modalities: [text, image]
-        max_input_tokens: 176000
-        max_output_tokens: 24000
-        description: "WorkBuddy 深度档别名，由上游映射到具体模型"
-      - id: workbuddy/hy4-preview-f
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 64000
-      - id: workbuddy/hy4-preview
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 64000
-      - id: workbuddy/hy3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 192000
-        max_output_tokens: 64000
-      - id: workbuddy/deepseek-v4.1-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/deepseek-v4.1-flash-sg
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/gpt-6-astra
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/gpt-5.6-sol
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/gpt-5.6-terra
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/gpt-5.6-luna
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/gpt-5.5
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: workbuddy/gpt-5.4
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 272000
-        max_output_tokens: 72000
-      - id: workbuddy/gpt-5.3-codex
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 272000
-      - id: workbuddy/gemini-3.5-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 65536
-      - id: workbuddy/glm-5.3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 48000
-      - id: workbuddy/glm-5.2
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 48000
-      - id: workbuddy/kimi-k3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 32000
-      - id: workbuddy/kimi-k2.8-preview
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 1000000
-        max_output_tokens: 32000
-      - id: workbuddy/kimi-k2.6
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 256000
-        max_output_tokens: 32000
-  - name: trae
-    type: channel
-    channel: trae
-    #
-    # TRAE（字节）的 SOLO 端点：既不是 OpenAI 也不是 Anthropic，用专门的
-    # TraeProvider（见 internal/provider/trae.go）做请求体翻译与私有 SSE → Anthropic
-    # SSE 翻译。鉴权是 Authorization: Cloud-IDE-JWT，并附带复刻客户端所需的一整套
-    # X-* 头（由渠道侧的 AuthSource 提供，因为依赖当前账号的 uid/machine_id）。
-    #
-    # 登录是「授权页 + 固定端口回环回调」：网关在 127.0.0.1:18080 起回调服务
-    # （端口被占用则退回系统分配端口），把 https://www.trae.cn/authorization?... 交给
-    # 浏览器打开。⚠️ 网关需要 Trae 客户端标识（client_id / app_id）才能拼出授权地址：
-    # 通过 TRAE_CHANNEL_CLIENT_ID / TRAE_CHANNEL_APP_ID 环境变量，或
-    # <LLM_GATEWAY_HOME>/trae-client.json（{"client_id":..,"app_id":..}）提供，二者都
-    # 没有时登录会直接报错并给出指引（第三方客户端标识不进公开仓库）。
-    #
-    # ⚠️ 同其它账号渠道：这是复刻官方客户端的非官方用法，可能违反服务条款并导致账号
-    # 被封。仅用于本机个人测试，不要对外分发。
-    #
-    # 模型清单取自官方客户端自带的 TRAE_FALLBACK_MODELS：只保留可调用的可见模型，
-    # isHidden 的内部模型（browser_use_subagent / explore_sub_agent_* / summary）与
-    # custom_model_* 占位模型都不在此。模型 ID 加 `trae/` 前缀以避免与既有供应商重名。
-    models:
-      - id: trae/glm-5.2
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/glm-5-turbo
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/glm-5
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/DeepSeek-V4-Pro
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/DeepSeek-V4-Flash
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/DeepSeek-V4-Flash-Official
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/kimi-k3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/kimi-k2.7-code
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/kimi-k2.6
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/minimax-m3
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/qwen-3.7-plus
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/Doubao-Seed-2.1-Pro
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/Doubao-Seed-2.1-Turbo
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        input_modalities: [text, image]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/Doubao-Seed-2.0-Code
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-      - id: trae/seed-code-pro-0430
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 64000
-  - name: loomy
-    type: channel
-    channel: loomy
-    #
-    # Loomy（讯飞）桌面客户端。推理端点是普通 OpenAI Chat Completions
-    # （POST {apiBase}/chat/completions），因此复用 OpenAIProvider；渠道侧多做的三件事：
-    #   1. 鉴权 Authorization: Bearer <token>（由 AuthSource 提供）；
-    #   2. 业务端点只认自定义头 token，chat 端点两个都发——当前账号令牌通过
-    #      DynamicHeaders 每请求写进 `token` 头（静态 ExtraHeaders 表达不了随账号变化的值）；
-    #   3. 模型 ID 带 `loomy/` 前缀避免与既有供应商重名，请求体里再剥掉前缀（Transform）。
-    #
-    # 登录是「微信扫码 + 回环服务」：网关在 127.0.0.1 随机端口起一个小服务，/wechat/qr 渲染
-    # 扫码页，页面内轮询 /wechat/poll；已绑定微信的账号扫完直接出会话令牌，新账号则跳
-    # /wechat/complete 补手机号（短信验证码）或跳过绑定。
-    # ⚠️ 网关需要讯飞账号侧应用凭据（accessKeyId/accessKeySecret）才能调用账号接口：
-    # 通过 LOOMY_ACCESS_KEY_ID / LOOMY_ACCESS_KEY_SECRET（可选 LOOMY_APP_ID /
-    # LOOMY_WECHAT_APP_ID）环境变量，或 <LLM_GATEWAY_HOME>/loomy-client.json
-    # （{"access_key_id":..,"access_key_secret":..}）提供，二者都没有时登录会直接报错并给出指引
-    # （第三方客户端密钥不进公开仓库）。
-    #
-    # ⚠️ 同其它账号渠道：这是复刻官方客户端的非官方用法，可能违反服务条款并导致账号被封。
-    # 仅用于本机个人测试，不要对外分发。
-    #
-    # 模型清单取自客户端自带的 LOOMY_FALLBACK_MODELS（含上下文档位）。全为文本模型；
-    # 客户端会发 reasoning_effort，故标注 reasoning。模型 ID 加 `loomy/` 前缀。
-    models:
-      - id: loomy/deepseek-v4-flash-0731
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1048576
-        max_output_tokens: 65536
-      - id: loomy/MiniMax-M3
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1048576
-        max_output_tokens: 65536
-      - id: loomy/Kimi-k2.6
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 262144
-        max_output_tokens: 65536
-      - id: loomy/qwen-3.8-max
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 65536
-      - id: loomy/GLM-5.3-Flash
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1048576
-        max_output_tokens: 65536
-      - id: loomy/qwen3.8-flash
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 65536
-      - id: loomy/spark-x
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1048576
-        max_output_tokens: 65536
-      - id: loomy/mimo-v2.5
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1048576
-        max_output_tokens: 65536
-  - name: raccoon
-    type: channel
-    channel: raccoon
-    #
-    # Raccoon（商汤 / Senser「小浣熊」）桌面客户端。推理端点是普通 OpenAI Chat Completions
-    # （POST {apiBase}/api/web/llm/v2/chat/completions），因此复用 OpenAIProvider；
-    # 渠道侧多做的三件事：
-    #   1. 鉴权 Authorization: Bearer <token>（由 AuthSource 提供，401 自动续期一次）；
-    #   2. 复刻固定头 Accept: text/event-stream / X-Raccoon-Language: zh /
-    #      X-Client-Platform: desktop-windows；其中 X-Org-Code 必须是**当前账号**的
-    #      office_identity（个人账号为空），故走 DynamicHeaders 每请求求值；
-    #   3. 思考档位只认 extra_body.thinking.type（顶层 reasoning_effort / thinking 会被
-    #      静默忽略），由 Transform 折叠进 extra_body。
-    #
-    # 登录有两条路径，都在本机回环页上完成（网关在 127.0.0.1 随机端口起小服务）：
-    #   - 微信扫码：二维码内容 = {apiBase}/login/mp?code=<随机 hex>，服务端不提供图片，
-    #     故由网关**本地渲染**成 SVG（见 internal/channel/raccoon_qr.go），页面每 2 秒
-    #     轮询一次 /raccoon/poll；
-    #   - 短信：手机号经 AES-128-CFB 加密（密钥为客户端内置常量，可用
-    #     RACCOON_PHONE_CIPHER_SECRET 覆盖）后调 send_sms / login_with_sms，
-    #     下发前需过阿里云滑块验证码。
-    # 登录不需要任何第三方应用密钥，开箱可用。
-    #
-    # ⚠️ 同其它账号渠道：这是复刻官方客户端的非官方用法，可能违反服务条款并导致账号被封。
-    # 仅用于本机个人测试，不要对外分发。
-    #
-    # 模型清单取自客户端自带的 RACCOON_FALLBACK_MODELS（含上下文档位）。均为多模态模型
-    # （标注 vision）；思考档位通过 extra_body.thinking 控制，故标注 reasoning。
-    # 模型 ID 直接用上游原生的 `sn-` 前缀（与既有供应商无重名，无需再加命名空间）。
-    models:
-      - id: sn-sensenova-6-8-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 256000
-        max_output_tokens: 63999
-      - id: sn-sensenova-6-8-flash-lite
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 256000
-        max_output_tokens: 63999
-      - id: sn-glm-5-3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 100000
-      - id: sn-kimi-k3
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 100000
-      - id: sn-glm-5-3-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 100000
-      - id: sn-deepseek-v4-1-flash
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 100000
+  # 账号渠道（minimax/cline/lobster/gemini/codebuddy/workbuddy/trae/loomy/
+  # raccoon/opencode）暂未使用（本机无登录凭据），provider 条目已移除以精简
+  # 模型目录。渠道登录实现仍在网关内（Admin API /admin/channels 可用），
+  # 需要时把对应 type: channel 的 provider 条目加回来，历史写法见 Git 历史。
 
-  - name: opencode
-    type: channel
-    channel: opencode
-    # OpenCode Zen 付费模型使用账号授权。上游免费档仅供官方 OpenCode 客户端使用，
-    # 登录、补工具或客户端头都不能解除此限制。以下免费模型保留目录兼容性，
-    # 不再推荐给助理；如需网关调用，请按上游授权添加付费模型。
-    # 说明：https://github.com/anomalyco/opencode/issues/49588
+  # Kilo AI 公共网关免费池：无需 Key（allow_no_key）。上游会记录 prompt 并用于改进服务，
+  # 请勿经此 Provider 发送敏感内容；模型清单与额度由上游决定。
+  # 清单只保留经真实请求验证的模型；失效条目由 scripts/sync-free-channels.sh
+  # 每日比对上游免费清单后修剪，新增不自动跟进（避免无关模型回流）。
+  # Jev 结构化判断走 systemone 端点，见下方 opencode-systemone-free。
+  - name: kilo
+    type: openai
+    url: https://api.kilo.ai/api/gateway/chat/completions
+    api_key_env: KILO_API_KEY
+    allow_no_key: true
     models:
-      - id: big-pickle
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 32000
-      - id: space-bunny-free
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 1048576
-        max_output_tokens: 524288
-      - id: longcat-2.5-preview-free
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 131072
-      - id: mimo-v2.6-flash-free
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 200000
-        max_output_tokens: 32000
-      - id: nemotron-3-ultra-free
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 128000
-      - id: nemotron-3.5-lightning-free
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 262144
-        max_output_tokens: 262144
-      - id: ling-3.1-flash-free
-        capabilities: [text, tool_calling, streaming, reasoning]
-        max_input_tokens: 262144
-        max_output_tokens: 32768
-      - id: step-5-preview-free
-        capabilities: [text, vision, tool_calling, streaming, reasoning]
-        max_input_tokens: 1000000
-        max_output_tokens: 65536
+      # 自动路由档：上游在免费池内自选可用模型（2026-11-03 实测匿名可用）
+      - id: kilo-auto/free
+        capabilities: [text, tool_calling, streaming]
+      # 大参数免费档（550B MoE，2026-11-03 实测匿名可用）
+      - id: nvidia/nemotron-3-ultra-550b-a55b:free
+        capabilities: [text, tool_calling, streaming]
   # Jev uses System One state/questions and JSON answers, not chat/completions.
   # https://opencode.ai/v2/docs/console/models/#jev
   - name: opencode-systemone-free
@@ -726,64 +178,18 @@ providers:
         input_modalities: [text]
         description: "结构化判断：noul / choice / score。免费额度由上游控制；POST /v1/systemone。"
 
-  - name: opencode-systemone
-    type: systemone
-    url: https://opencode.ai/inference/systemone/v1/systemone
-    api_key_env: OPENCODE_API_KEY
-    models:
-      - id: jev-1.13
-        protocol: systemone
-        capabilities: [systemone]
-        input_modalities: [text]
-        description: "System One 结构化判断；需要 OpenCode 工作区 API Key，设备码登录不能替代。"
-
-  # Kilo AI 公共网关免费池：无需 Key（allow_no_key）。上游会记录 prompt 并用于改进服务，
-  # 请勿经此 Provider 发送敏感内容；模型清单与额度由上游决定。
-  - name: kilo
-    type: openai
-    url: https://api.kilo.ai/api/gateway/chat/completions
-    api_key_env: KILO_API_KEY
-    allow_no_key: true
-    models:
-      - id: stepfun/step-5-preview-free
-        capabilities: [text, tool_calling, streaming]
-      - id: kilo-auto/free
-        capabilities: [text, tool_calling, streaming]
-      - id: nvidia/nemotron-3-ultra-550b-a55b:free
-        capabilities: [text, tool_calling, streaming]
-      - id: dots-studio/dots-3-note-preview:free
-        capabilities: [text, tool_calling, streaming]
-      - id: inclusionai/ling-3.1-flash
-        capabilities: [text, tool_calling, streaming]
-      - id: poolside/laguna-s-2.1:free
-        capabilities: [text, tool_calling, streaming]
-      - id: stealth/glyph-cluster
-        capabilities: [text, tool_calling, streaming]
-      - id: liquid/lfm-2.5-2.6b:free
-        capabilities: [text, tool_calling, streaming]
-      - id: nvidia/nemotron-3.5-lightning:free
-        capabilities: [text, tool_calling, streaming]
-      - id: thinkingmachines/inkling-small:free
-        capabilities: [text, tool_calling, streaming]
-      - id: poolside/laguna-xs-2.1:free
-        capabilities: [text, tool_calling, streaming]
-      - id: cohere/north-mini-code:free
-        capabilities: [text, tool_calling, streaming]
-      - id: nvidia/nemotron-3.5-content-safety:free
-        capabilities: [text, tool_calling, streaming]
-      - id: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
-        capabilities: [text, tool_calling, streaming]
-      - id: nvidia/nemotron-3-super-120b-a12b:free
-        capabilities: [text, tool_calling, streaming]
-      - id: openrouter/free
-        capabilities: [text, tool_calling, streaming]
-
 chains:
   # 唯一对外入口。按能力从强到弱排列，任一档失败（含限流、无权限、
   # 上游 5xx）都自动降级到下一档，客户端始终只调用这个名字。
+  # deepseek 与 glm-5.3-flash 的稳定供给分层：deepseek-flash / deepv-glm-5.3-flash
+  # 是代码注册的 DeepV 集成实例（不在 providers.yaml，2026-11-03 实测可用）；
+  # deepseek-ai/DeepSeek-V4.1-Flash 走硅基流动 keyed，是 DeepV 不可用时的稳定兜底；
+  # glm-5.3(-flash) 走智谱 keyed；kilo-auto/free 是匿名免费兜底。
   coding:
     - glm-5.3
     - glm-5.3-flash
-    - gemini-3.8-flash-high
-    - deepv-glm-5.3-flash
     - deepseek-flash
+    - deepseek-ai/DeepSeek-V4.1-Flash
+    - deepv-glm-5.3-flash
+    - gemini-3.8-flash-high
+    - kilo-auto/free

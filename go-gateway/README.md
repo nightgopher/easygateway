@@ -273,6 +273,18 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 - providers.yaml 做文本级手术（注释与键序保留）：模型条目与其说明注释移除，模型清空的 provider 整块移除，`chains` 里指向已删模型的引用同步清理（变空的链会如实上报 `chains_affected`）；
 - 落盘前先经真实加载器解析验证，原配置备份到 `providers.yaml.prune-bak`；热重载失败自动回滚备份，磁盘与运行时始终一致。
 
+### 免费渠道维护与每日同步
+
+匿名免费渠道（Kilo 公共免费池等）的模型清单与额度由上游单方面决定，随时可能下线、改名或限流。`scripts/sync-free-channels.sh` 每日比对上游实时清单，对网关配置做窄范围修补：
+
+- **数据源**：OpenCode 公共车道 `GET /inference/v1/models`（`Authorization: Bearer public`，实时清单）、Kilo `GET /api/gateway/models` 的免费档集合、dsh-our-free-model 的 `registry.json`（仅作上下文参考，其登记项本身可能过期，以实时探测为准）；
+- **自动应用范围**：只修剪 `kilo` 这类 `allow_no_key` Provider 中已从上游免费清单消失的模型（文本级手术，注释与键序保留），改前备份、经真实加载器校验、热重载、失败回滚；上游新增的免费模型不自动加入，避免无关模型回流；
+- **OpenCode 匿名车道**：`deepseek-v4.1-flash-free`、`glm-5.3-flash-free` 等模型对匿名请求有免费额度，但额度按出口 IP 结算，且上游校验官方客户端请求形态（工具名改写、官方工具表与系统提示，见下文「助理模型目录与 OpenCode 限制」），网关不直接接入；脚本每日探测并在报告中跟踪其可用性；
+- **报告**：每次运行输出对比与探活结果，并追加到 `~/Library/Logs/easygateway-free-sync.log`；
+- 用法：`scripts/sync-free-channels.sh [-endpoint URL] [-config PATH] [--dry-run] [--report-only]`。
+
+deepseek 与 glm-5.3-flash 的稳定供给不依赖免费渠道：glm 走智谱 keyed；deepseek 由代码注册的 DeepV 集成（`deepseek-flash`）与硅基流动 keyed（`siliconflow-chat`）双路供给，kilo 免费池只作链尾兜底。
+
 ### Gateway Key 多密钥
 
 gateway key 是发给具体客户端（手机、他人设备、试验脚本）的受限身份，与 master key 分工：master key 是管理员身份（全部模型、无限量、可进 `/admin`），gateway key 进不了 `/admin`。存储为网关主目录的 `gateway-keys.json`（0600），不存在时行为与从前完全一致。
@@ -818,7 +830,7 @@ DeepV 的 `claude-haiku-5-5` 不接受 `temperature`；网关转换该模型请�
 
 `GET /admin/assistant/models` 每次读取当前路由目录，渠道登录、退出或 Provider 启停后无需重启网关。`models` 保持模型 ID 数组，同时新增 `model_options`（`id`、`provider`、`channel`）供客户端搜索模型或渠道名；多渠道 fallback 不强行标成单个渠道。默认模型仍由 `ASSISTANT_MODEL` 决定，但未登录或已停用时不再列为可选模型。
 
-OpenCode 免费档仅允许官方 OpenCode 客户端使用，上游登录不能解除此限制，见 [维护者说明](https://github.com/anomalyco/opencode/issues/49588)。配置中的免费模型保留目录兼容性，网关不将其推荐给助理；渠道页面明确提示此限制。付费模型需在 `providers.yaml` 中添加并获得对应授权。转换器只保留调用方真实工具，不再补不能执行的 bash/read 占位工具。助理继续通过网关自身的 OpenAI 端点调用，保留渠道鉴权、路由、指标与 fallback。
+OpenCode 免费档仅允许官方 OpenCode 客户端使用，上游登录不能解除此限制，见 [维护者说明](https://github.com/anomalyco/opencode/issues/49588)。OpenCode 渠道的免费模型条目已从 `providers.yaml` 移除（登录车道 `/zen/v1` 已于 2026-10-14 迁移至 `/inference/v1`，旧目录中的免费模型全部失效）；匿名公共车道的可用性由 `scripts/sync-free-channels.sh` 每日探测跟踪（见「免费渠道维护与每日同步」）。付费模型需在 `providers.yaml` 中添加并获得对应授权。转换器只保留调用方真实工具，不再补不能执行的 bash/read 占位工具。助理继续通过网关自身的 OpenAI 端点调用，保留渠道鉴权、路由、指标与 fallback。
 
 ### 配置预检与热加载
 
