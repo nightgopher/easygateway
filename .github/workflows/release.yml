@@ -164,8 +164,10 @@ jobs:
           VERSION=$(python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
           mkdir -p ../desktop-release
           cp "build.noindex/darwin-arm64/EasyGateway $VERSION arm64.dmg" "../desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
-          # 签名更新包（应用内自更新）：有密钥才产出，缺失时跳过并提示。
-          find build.noindex/darwin-arm64 -maxdepth 2 \( -name 'update-*.json' -o -name 'EasyGateway-*.tar.gz' \) -exec cp {} ../desktop-release/ \; || true
+          # 自更新必须同时发布清单与其指向的签名压缩包。
+          cp "build.noindex/darwin-arm64/update-darwin-arm64.json" ../desktop-release/
+          cp "build.noindex/darwin-arm64/easygateway-$VERSION-darwin-arm64.tar.gz" ../desktop-release/
+          go run ../scripts/verify-desktop-update.go mygo.json ../desktop-release darwin-arm64
       - name: Notarize the macOS DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -181,7 +183,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-darwin-arm64
-          path: desktop-release/*.dmg
+          path: desktop-release/*
           if-no-files-found: error
 
   desktop-release-linux:
@@ -218,10 +220,10 @@ jobs:
             dpkg-deb -c "build.noindex/linux-$arch/easygateway_${VERSION}_${arch}.deb" | grep -q "opt/easygateway/easygateway$"
             cp "build.noindex/linux-$arch/easygateway_${VERSION}_${arch}.deb" "../desktop-release/"
             cp "build.noindex/linux-$arch/easygateway-${VERSION}-linux-$arch.tar.gz" "../desktop-release/"
+            cp "build.noindex/linux-$arch/update-linux-$arch.json" "../desktop-release/"
             cp "build.noindex/linux-$arch/install.sh" "../desktop-release/easygateway-desktop-install-linux-$arch.sh"
           done
-          # 签名更新包（应用内自更新）
-          find build.noindex -maxdepth 3 -name 'update-*.json' -exec cp {} ../desktop-release/ \; || true
+          go run ../scripts/verify-desktop-update.go mygo.json ../desktop-release linux-amd64 linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
@@ -279,9 +281,12 @@ jobs:
           cp scripts/install.bat release/
           cp scripts/install.ps1 release/
           cp artifacts/desktop-darwin-arm64/*.dmg release/
-          # 桌面端签名更新产物（存在才复制）
-          cp artifacts/desktop-darwin-arm64/update-*.json release/ 2>/dev/null || true
-          cp artifacts/desktop-linux/update-*.json release/ 2>/dev/null || true
+          # 桌面端签名更新产物不能缺失，否则已安装客户端无法更新。
+          cp artifacts/desktop-darwin-arm64/easygateway-*-darwin-arm64.tar.gz release/
+          cp artifacts/desktop-darwin-arm64/update-darwin-arm64.json release/
+          cp artifacts/desktop-linux/update-linux-amd64.json release/
+          cp artifacts/desktop-linux/update-linux-arm64.json release/
+          go run scripts/verify-desktop-update.go desktop/mygo.json release darwin-arm64 linux-amd64 linux-arm64
           (cd release && sha256sum gateway-* *.deb *.tar.gz *.dmg providers.yaml default.env.example install.* easygateway-desktop-install-*.sh update-*.json > SHA256SUMS)
           # 列出文件
           ls -lh release/

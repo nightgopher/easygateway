@@ -30,6 +30,7 @@ jobs:
         run: |
           go vet ./...
           go test -v ./...
+          go test ../scripts/verify-desktop-update.go ../scripts/verify-desktop-update_test.go
           bash ../scripts/tests/install-unix.Tests.sh
 
       - name: Test mini-host updater request configuration
