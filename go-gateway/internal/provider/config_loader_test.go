@@ -86,7 +86,7 @@ func TestProvidersConfigExposesSingleCodingChain(t *testing.T) {
 		t.Fatalf("load providers.yaml: %v", err)
 	}
 
-	want := []string{"glm-5.3", "glm-5.3-flash", "gemini-3.8-flash-high", "deepv-glm-5.3-flash", "deepseek-flash"}
+	want := []string{"glm-5.3", "glm-5.3-flash", "deepseek-flash", "deepseek-ai/DeepSeek-V4.1-Flash", "deepv-glm-5.3-flash", "gemini-3.8-flash-high", "kilo-auto/free"}
 	if got := config.Chains["coding"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("coding chain = %#v, want %#v", got, want)
 	}
