@@ -168,18 +168,16 @@ jobs:
           cp "build.noindex/darwin-arm64/update-darwin-arm64.json" ../desktop-release/
           cp "build.noindex/darwin-arm64/easygateway-$VERSION-darwin-arm64.tar.gz" ../desktop-release/
           go run ../scripts/verify-desktop-update.go mygo.json ../desktop-release darwin-arm64
-      - name: Notarize the macOS DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Validate the notarized macOS release
         run: |
           VERSION=$(python3 -c 'import json; print(json.load(open("desktop/mygo.json"))["version"])')
           DMG="desktop-release/EasyGateway-$VERSION-darwin-arm64.dmg"
-          xcrun notarytool store-credentials "easygateway-notary" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
-          xcrun notarytool submit "$DMG" --keychain-profile "easygateway-notary" --wait
-          xcrun stapler staple "$DMG"
+          APP="desktop/build.noindex/darwin-arm64/EasyGateway.app"
+          # mygo build already submits and staples both the image and app.
+          codesign --verify --verbose=2 "$DMG"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           xcrun stapler validate "$DMG"
+          xcrun stapler validate "$APP"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-darwin-arm64
