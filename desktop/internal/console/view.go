@@ -605,177 +605,186 @@ func (a *App) overviewView(c *ui.Context) {
 	}
 	s := a.dashboard.Summary
 	theme := c.Theme()
-	if a.ccHint.Visible {
-		card(c, func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "检测到 cc-switch 配置").Bold()
-				ui.Spacer(c)
-				chip(c, "一键迁移", theme.Accent)
-			})
-			if a.ccHint.Remote {
-				muted(c, "这台电脑上装有 cc-switch；网关刚起步，可以把已配置的供应商与模型直接迁入（设置页支持本机上传到远程网关）。")
-			} else {
-				muted(c, fmt.Sprintf("网关主机上有 %d 个 cc-switch 条目可导入：供应商、模型与密钥一步迁入，cc-switch 数据只读不动。", a.ccHint.Importable))
-			}
-			ui.Row(c).Gap(8).Children(func() {
-				ui.PrimaryButton(c, "去迁移").OnClick(func() { a.navigate("settings") })
-			})
-		})
-	}
-	metrics := []struct{ Title, Value string }{
-		{"今日请求", shortNumber(int64(s.TodayRequests))},
-		{"成功率", fmt.Sprintf("%.1f%%", s.SuccessRate)},
-		{"今日 Tokens", shortNumber(s.TodayTokens)},
-		{"平均延迟", formatLatency(s.AvgLatency)},
-	}
-	ui.Row(c).Background(theme.Surface).Radius(12).Border(1, theme.Border).AlignItems(ui.Center).Children(func() {
-		for i, metric := range metrics {
-			if i > 0 {
-				ui.Box(c).Width(1).AlignSelf(ui.Stretch).Background(theme.Border)
-			}
-			ui.Column(c.Key(metric.Title)).Grow(1).MinWidth(0).Padding(16, 20).Gap(6).Children(func() {
-				ui.Text(c, metric.Title).FontSize(13).TextColor(theme.TextMuted)
-				ui.Text(c, metric.Value).Bold().FontSize(22).SingleLine()
-			})
-		}
-	})
-	// 渠道凭据过期提醒：把“用到才发现 401”提前到概览。
-	if expired, expiring := a.channelExpiryCounts(); expired > 0 || expiring > 0 {
-		var parts []string
-		if expired > 0 {
-			parts = append(parts, fmt.Sprintf("%d 个已失效", expired))
-		}
-		if expiring > 0 {
-			parts = append(parts, fmt.Sprintf("%d 个 24 小时内过期", expiring))
-		}
-		ui.Row(c).Gap(12).Padding(12, 16).Radius(10).Background(theme.Accent.Alpha(.08)).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "渠道凭据提醒："+strings.Join(parts, "，")+"。").TextColor(theme.Accent).Grow(1)
-			ui.Button(c, "去处理").OnClick(func() { a.navigate("channels") })
-		})
-	}
-
-	// 用量趋势：数据来自网关持久化的按天聚合（/stats/history），跨重启可查。
-	// 旧版网关无此端点时拉取失败，statsHistory 为空即整卡隐藏。
+	// 用量趋势范围切换固定在滚动容器外：概览页拉长后卡片区可滚动，
+	// 页面级控件（同请求日志页工具栏）常驻可见，视口外控件不可交互。
 	if len(a.statsHistory.Days) > 0 {
-		card(c, func() {
-			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "用量趋势").FontSize(16).Bold()
-				muted(c, a.statsHistory.From+" ~ "+a.statsHistory.To)
-				ui.Spacer(c)
-				for _, opt := range []struct {
-					label string
-					days  int
-				}{{"近 7 天", 7}, {"近 30 天", 30}} {
-					if a.statsDays == opt.days {
-						ui.PrimaryButton(c, opt.label).Disabled(a.busy != "")
-					} else {
-						ui.Button(c, opt.label).Disabled(a.busy != "").OnClick(func() { a.statsDays = opt.days; a.reload() })
-					}
-				}
-			})
-			maxReq := 1
-			for _, day := range a.statsHistory.Days {
-				if day.Requests > maxReq {
-					maxReq = day.Requests
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "用量趋势范围").FontSize(13).Bold()
+			ui.Spacer(c)
+			for _, opt := range []struct {
+				label string
+				days  int
+			}{{"近 7 天", 7}, {"近 30 天", 30}} {
+				if a.statsDays == opt.days {
+					ui.PrimaryButton(c, opt.label).Disabled(a.busy != "")
+				} else {
+					ui.Button(c, opt.label).Disabled(a.busy != "").OnClick(func() { a.statsDays = opt.days; a.reload() })
 				}
 			}
-			for _, day := range a.statsHistory.Days {
-				d := day
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					if len(d.Date) >= 10 {
-						muted(c, d.Date[5:]) // YYYY-MM-DD -> MM-DD
-					}
-					ui.Meter(c, float64(d.Requests), 0, float64(maxReq), nil).Label(shortNumber(int64(d.Requests)) + " 次请求").Grow(1).MinWidth(0)
-					ui.Text(c, shortNumber(d.TotalTokens)+" tok").FontSize(12).TextColor(theme.TextMuted)
-					if d.Errors > 0 {
-						ui.Text(c, fmt.Sprintf("%d 错", d.Errors)).FontSize(12).TextColor(theme.Danger)
-					}
-				})
-			}
-			if len(a.statsHistory.Models) > 0 {
-				ui.Divider(c)
-				ui.Row(c).Gap(10).Children(func() {
-					ui.Text(c, "模型用量").FontSize(13).Bold()
+		})
+	}
+	ui.Scroll(c).Grow(1).Gap(16).Children(func() {
+		if a.ccHint.Visible {
+			card(c, func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "检测到 cc-switch 配置").Bold()
 					ui.Spacer(c)
+					chip(c, "一键迁移", theme.Accent)
 				})
-				for i, m := range a.statsHistory.Models {
-					if i >= 5 {
-						break
+				if a.ccHint.Remote {
+					muted(c, "这台电脑上装有 cc-switch；网关刚起步，可以把已配置的供应商与模型直接迁入（设置页支持本机上传到远程网关）。")
+				} else {
+					muted(c, fmt.Sprintf("网关主机上有 %d 个 cc-switch 条目可导入：供应商、模型与密钥一步迁入，cc-switch 数据只读不动。", a.ccHint.Importable))
+				}
+				ui.Row(c).Gap(8).Children(func() {
+					ui.PrimaryButton(c, "去迁移").OnClick(func() { a.navigate("settings") })
+				})
+			})
+		}
+		metrics := []struct{ Title, Value string }{
+			{"今日请求", shortNumber(int64(s.TodayRequests))},
+			{"成功率", fmt.Sprintf("%.1f%%", s.SuccessRate)},
+			{"今日 Tokens", shortNumber(s.TodayTokens)},
+			{"平均延迟", formatLatency(s.AvgLatency)},
+		}
+		ui.Row(c).Background(theme.Surface).Radius(12).Border(1, theme.Border).AlignItems(ui.Center).Children(func() {
+			for i, metric := range metrics {
+				if i > 0 {
+					ui.Box(c).Width(1).AlignSelf(ui.Stretch).Background(theme.Border)
+				}
+				ui.Column(c.Key(metric.Title)).Grow(1).MinWidth(0).Padding(16, 20).Gap(6).Children(func() {
+					ui.Text(c, metric.Title).FontSize(13).TextColor(theme.TextMuted)
+					ui.Text(c, metric.Value).Bold().FontSize(22).SingleLine()
+				})
+			}
+		})
+		// 渠道凭据过期提醒：把“用到才发现 401”提前到概览。
+		if expired, expiring := a.channelExpiryCounts(); expired > 0 || expiring > 0 {
+			var parts []string
+			if expired > 0 {
+				parts = append(parts, fmt.Sprintf("%d 个已失效", expired))
+			}
+			if expiring > 0 {
+				parts = append(parts, fmt.Sprintf("%d 个 24 小时内过期", expiring))
+			}
+			ui.Row(c).Gap(12).Padding(12, 16).Radius(10).Background(theme.Accent.Alpha(.08)).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "渠道凭据提醒："+strings.Join(parts, "，")+"。").TextColor(theme.Accent).Grow(1)
+				ui.Button(c, "去处理").OnClick(func() { a.navigate("channels") })
+			})
+		}
+
+		// 用量趋势：数据来自网关持久化的按天聚合（/stats/history），跨重启可查。
+		// 旧版网关无此端点时拉取失败，statsHistory 为空即整卡隐藏。
+		if len(a.statsHistory.Days) > 0 {
+			card(c, func() {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "用量趋势").FontSize(16).Bold()
+					muted(c, a.statsHistory.From+" ~ "+a.statsHistory.To)
+				})
+				maxReq := 1
+				for _, day := range a.statsHistory.Days {
+					if day.Requests > maxReq {
+						maxReq = day.Requests
 					}
+				}
+				for _, day := range a.statsHistory.Days {
+					d := day
 					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, m.Model).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-						if m.Provider != "" {
-							muted(c, m.Provider)
+						if len(d.Date) >= 10 {
+							muted(c, d.Date[5:]) // YYYY-MM-DD -> MM-DD
 						}
-						ui.Text(c, shortNumber(m.TotalTokens)+" tok · "+strconv.Itoa(m.Requests)+" 次").FontSize(12).TextColor(theme.TextMuted)
+						ui.Meter(c, float64(d.Requests), 0, float64(maxReq), nil).Label(shortNumber(int64(d.Requests)) + " 次请求").Grow(1).MinWidth(0)
+						ui.Text(c, shortNumber(d.TotalTokens)+" tok").FontSize(12).TextColor(theme.TextMuted)
+						if d.Errors > 0 {
+							ui.Text(c, fmt.Sprintf("%d 错", d.Errors)).FontSize(12).TextColor(theme.Danger)
+						}
 					})
 				}
-			}
-		})
-	}
-
-	// 服务健康与缓存卡片
-	card(c, func() {
-		ui.Row(c).Gap(24).AlignItems(ui.Center).Children(func() {
-			ui.Column(c).Grow(1).Gap(6).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "服务可用性").FontSize(13).TextColor(theme.TextMuted)
-					ui.Spacer(c)
-					ui.Textf(c, "%.1f%%", s.SuccessRate).FontSize(13).Bold()
-				})
-				ui.Meter(c, s.SuccessRate, 0, 100, &ui.MeterLevels{Critical: 80, Warning: 95}).Label("成功率").FillWidth()
+				if len(a.statsHistory.Models) > 0 {
+					ui.Divider(c)
+					ui.Row(c).Gap(10).Children(func() {
+						ui.Text(c, "模型用量").FontSize(13).Bold()
+						ui.Spacer(c)
+					})
+					for i, m := range a.statsHistory.Models {
+						if i >= 5 {
+							break
+						}
+						ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, m.Model).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+							if m.Provider != "" {
+								muted(c, m.Provider)
+							}
+							ui.Text(c, shortNumber(m.TotalTokens)+" tok · "+strconv.Itoa(m.Requests)+" 次").FontSize(12).TextColor(theme.TextMuted)
+						})
+					}
+				}
 			})
-			if s.CacheHitRate != nil {
+		}
+
+		// 服务健康与缓存卡片
+		card(c, func() {
+			ui.Row(c).Gap(24).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).Gap(6).Children(func() {
 					ui.Row(c).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, "缓存命中率").FontSize(13).TextColor(theme.TextMuted)
+						ui.Text(c, "服务可用性").FontSize(13).TextColor(theme.TextMuted)
 						ui.Spacer(c)
-						ui.Text(c, percent(s.CacheHitRate)).FontSize(13).Bold()
+						ui.Textf(c, "%.1f%%", s.SuccessRate).FontSize(13).Bold()
 					})
-					ui.Meter(c, *s.CacheHitRate, 0, 100, nil).Label("缓存命中率").FillWidth()
+					ui.Meter(c, s.SuccessRate, 0, 100, &ui.MeterLevels{Critical: 80, Warning: 95}).Label("成功率").FillWidth()
 				})
-			}
+				if s.CacheHitRate != nil {
+					ui.Column(c).Grow(1).Gap(6).Children(func() {
+						ui.Row(c).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, "缓存命中率").FontSize(13).TextColor(theme.TextMuted)
+							ui.Spacer(c)
+							ui.Text(c, percent(s.CacheHitRate)).FontSize(13).Bold()
+						})
+						ui.Meter(c, *s.CacheHitRate, 0, 100, nil).Label("缓存命中率").FillWidth()
+					})
+				}
+			})
+			ui.Row(c).Gap(20).Children(func() {
+				muted(c, "运行时间  "+s.Uptime)
+				if s.CacheHitRate != nil {
+					muted(c, "缓存读取  "+shortNumber(s.CacheRead))
+				}
+				if s.ActiveModels > 0 {
+					muted(c, fmt.Sprintf("活跃模型  %d 个", s.ActiveModels))
+				}
+			})
 		})
-		ui.Row(c).Gap(20).Children(func() {
-			muted(c, "运行时间  "+s.Uptime)
-			if s.CacheHitRate != nil {
-				muted(c, "缓存读取  "+shortNumber(s.CacheRead))
-			}
-			if s.ActiveModels > 0 {
-				muted(c, fmt.Sprintf("活跃模型  %d 个", s.ActiveModels))
-			}
-		})
-	})
 
-	tally := map[string]int{}
-	for _, p := range a.dashboard.Providers {
-		switch {
-		case p.Status == "online":
-			tally["online"]++
-		case p.Status == "offline":
-			tally["offline"]++
-		case p.Status == "degraded":
-			tally["degraded"]++
-		default:
-			tally["unknown"]++
+		tally := map[string]int{}
+		for _, p := range a.dashboard.Providers {
+			switch {
+			case p.Status == "online":
+				tally["online"]++
+			case p.Status == "offline":
+				tally["offline"]++
+			case p.Status == "degraded":
+				tally["degraded"]++
+			default:
+				tally["unknown"]++
+			}
 		}
-	}
-	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, "上游健康").FontSize(18).Bold()
-		if tally["online"] > 0 {
-			chip(c, fmt.Sprintf("%d 在线", tally["online"]), okGreen)
-		}
-		if tally["degraded"] > 0 {
-			chip(c, fmt.Sprintf("%d 降级", tally["degraded"]), theme.Accent)
-		}
-		if tally["offline"] > 0 {
-			chip(c, fmt.Sprintf("%d 离线", tally["offline"]), theme.Danger)
-		}
-		if tally["unknown"] > 0 {
-			chip(c, fmt.Sprintf("%d 未探测", tally["unknown"]), theme.TextMuted)
-		}
-		ui.Spacer(c)
-		ui.SearchField(c, &a.overviewFilter).Placeholder("搜索 Provider...").Width(200)
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "上游健康").FontSize(18).Bold()
+			if tally["online"] > 0 {
+				chip(c, fmt.Sprintf("%d 在线", tally["online"]), okGreen)
+			}
+			if tally["degraded"] > 0 {
+				chip(c, fmt.Sprintf("%d 降级", tally["degraded"]), theme.Accent)
+			}
+			if tally["offline"] > 0 {
+				chip(c, fmt.Sprintf("%d 离线", tally["offline"]), theme.Danger)
+			}
+			if tally["unknown"] > 0 {
+				chip(c, fmt.Sprintf("%d 未探测", tally["unknown"]), theme.TextMuted)
+			}
+			ui.Spacer(c)
+			ui.SearchField(c, &a.overviewFilter).Placeholder("搜索 Provider...").Width(200)
+		})
 	})
 
 	if len(a.dashboard.Providers) == 0 {
@@ -861,7 +870,7 @@ func (a *App) overviewView(c *ui.Context) {
 		case 3:
 			ui.Text(c, formatLatency(p.AvgLatency))
 		}
-	}).Grow(1)
+	}).MinHeight(240)
 }
 func (a *App) modelsView(c *ui.Context) {
 	ui.Row(c).Wrap().Gap(8).Children(func() {

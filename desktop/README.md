@@ -4,7 +4,7 @@
 
 ## 开发与构建
 
-需要 Go 1.27.1+。MyGo 版本以 `go.mod` 为准（当前 v0.6.0）。
+需要 Go 1.27.1+。MyGo 版本以 `go.mod` 为准（当前 v0.7.4）。
 
 ```bash
 go test -race ./...
