@@ -169,7 +169,8 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          xcrun notarytool store-credentials "easygateway-notary" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
+          # 凭据存进已解锁的 build.keychain（登录钥匙串在无人登录会话里是锁定的）
+          xcrun notarytool store-credentials "easygateway-notary" --keychain build.keychain --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
           go run github.com/egoist/mygo/cmd/mygo build -platform darwin/arm64
           VERSION=$(python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
           mkdir -p ../desktop-release

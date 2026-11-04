@@ -7,7 +7,8 @@
         "minimumSystemVersion": "13.0",
         "signingIdentity": "8AAD734656B383438D6DAC96D27580A561A1F85B",
         "notarize": {
-            "keychainProfile": "easygateway-notary"
+            "keychainProfile": "easygateway-notary",
+            "keychain": "build.keychain"
         }
     },
     "linux": {
