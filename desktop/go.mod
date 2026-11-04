@@ -1,9 +1,9 @@
 module github.com/nightgopher/easygateway/desktop
 
-go 1.27.1
+go 1.27.3
 
 require (
-	github.com/egoist/mygo v0.6.0
+	github.com/egoist/mygo v0.7.4
 	modernc.org/sqlite v1.53.0
 )
 
@@ -16,6 +16,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/image v0.46.0 // indirect
+	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	modernc.org/libc v1.73.4 // indirect
