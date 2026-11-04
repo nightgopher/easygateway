@@ -8,13 +8,15 @@ on:
   workflow_dispatch:
 jobs:
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
           cache-dependency-path: desktop/go.sum
+      - name: Validate the macOS installer on Apple Silicon
+        run: bash scripts/tests/install-unix.Tests.sh
       - run: go test -race ./... && go vet ./...
         working-directory: desktop
       - run: go run github.com/egoist/mygo/cmd/mygo vet
