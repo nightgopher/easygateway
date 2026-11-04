@@ -149,8 +149,15 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 14400 build.keychain
           security list-keychain -d user -s build.keychain login.keychain
+          # 自建 runner 的会话里登录钥匙串可能处于锁定状态（锁屏/无人登录），
+          # notarytool 读写的是默认钥匙串，这里把已解锁的 build.keychain 设为默认
+          security default-keychain -d user -s build.keychain
           rm certificate.p12
+      - name: Restore the default keychain
+        if: always()
+        run: security default-keychain -d user -s ~/Library/Keychains/login.keychain-db
       - name: Build desktop installer
         working-directory: desktop
         env:
