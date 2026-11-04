@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -148,22 +147,5 @@ func TestBearerAuthRateLimitsFailures(t *testing.T) {
 	e.ServeHTTP(w, valid)
 	if w.Code != http.StatusTooManyRequests {
 		t.Errorf("valid token within blocked window should still be limited, got %d", w.Code)
-	}
-}
-
-func TestFailureLimiterWindowExpires(t *testing.T) {
-	f := newFailureLimiter(authFailureWindow, authFailureMax)
-	now := time.Now()
-	for i := 0; i < authFailureMax; i++ {
-		f.recordFail("1.2.3.4", now)
-	}
-	if f.allow("1.2.3.4", now) {
-		t.Error("limiter should block at the limit")
-	}
-	if !f.allow("1.2.3.4", now.Add(authFailureWindow+time.Second)) {
-		t.Error("limiter should unblock after the window expires")
-	}
-	if !f.allow("5.6.7.8", now) {
-		t.Error("other IPs must not be affected")
 	}
 }

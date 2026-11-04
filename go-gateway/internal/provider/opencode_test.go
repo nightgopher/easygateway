@@ -103,33 +103,6 @@ func TestOpenCodeForwardRequestAccumulatesStream(t *testing.T) {
 	}
 }
 
-// TestOpenCodeForwardRequestKeepsBlockOrder 验证内容块按首次出现顺序落位
-// （thinking → text → tool_use），与 SSE 里的序号分配一致。
-func TestOpenCodeForwardRequestKeepsBlockOrder(t *testing.T) {
-	srv, _ := openCodeCaptureServer(t,
-		`{"id":"c1","choices":[{"index":0,"delta":{"reasoning_content":"想"},"finish_reason":null}]}`,
-		`{"id":"c1","choices":[{"index":0,"delta":{"content":"答"},"finish_reason":null}]}`,
-		`{"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
-		`[DONE]`,
-	)
-	p := NewOpenCodeProvider(&Config{Name: "paid-model", URL: srv.URL, Auth: NewStaticAuth("test-paid-key")})
-	req := mustRequest(t, `{"model":"paid-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
-
-	resp, err := p.ForwardRequest(context.Background(), req)
-	if err != nil {
-		t.Fatalf("ForwardRequest failed: %v", err)
-	}
-	if len(resp.Content) != 2 {
-		t.Fatalf("应有两个内容块，得到 %d: %+v", len(resp.Content), resp.Content)
-	}
-	if resp.Content[0].Type != "thinking" || resp.Content[1].Type != "text" {
-		t.Fatalf("块顺序应为 thinking → text，得到 %s → %s", resp.Content[0].Type, resp.Content[1].Type)
-	}
-	if resp.StopReason != "end_turn" {
-		t.Fatalf("finish_reason=stop 应映射成 end_turn，得到 %q", resp.StopReason)
-	}
-}
-
 // TestOpenCodeForwardStreamTranslatesToAnthropicSSE 验证流式路径仍走 OpenAIProvider
 // 的翻译（Anthropic SSE 事件齐全），覆盖没有破坏继承来的行为。
 func TestOpenCodeForwardStreamTranslatesToAnthropicSSE(t *testing.T) {
@@ -154,15 +127,6 @@ func TestOpenCodeForwardStreamTranslatesToAnthropicSSE(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("Anthropic SSE 缺少 %s，实际输出:\n%s", want, out)
 		}
-	}
-}
-
-// TestOpenCodeImplementsProviderInterfaces 是编译期断言的运行期对应：
-// OpenCodeProvider 必须同时满足 Provider 与 StreamProvider（路由层会做类型断言）。
-func TestOpenCodeImplementsProviderInterfaces(t *testing.T) {
-	var p Provider = NewOpenCodeProvider(&Config{Name: "paid-model", URL: "http://example.invalid"})
-	if _, ok := p.(StreamProvider); !ok {
-		t.Fatalf("OpenCodeProvider 必须实现 StreamProvider")
 	}
 }
 

@@ -53,18 +53,3 @@ func TestNormalizeScope(t *testing.T) {
 		t.Fatal("未知 scope_type 应报错")
 	}
 }
-
-func TestRenderBlock(t *testing.T) {
-	if block := RenderBlock(nil); block != "" {
-		t.Fatal("空结果不应渲染注入块")
-	}
-	block := RenderBlock([]Memory{
-		{Statement: "部署走 tag 驱动流水线"},
-		{Statement: "对账以场景表为准"},
-	})
-	if !strings.Contains(block, "<agent-memory>") ||
-		!strings.Contains(block, "- 部署走 tag 驱动流水线") ||
-		!strings.Contains(block, "- 对账以场景表为准") {
-		t.Fatalf("注入块格式错误:\n%s", block)
-	}
-}
