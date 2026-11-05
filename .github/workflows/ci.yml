@@ -36,25 +36,11 @@ jobs:
       - name: Test mini-host updater request configuration
         run: bash scripts/tests/gateway-auto-update.Tests.sh
 
-  installer-test:
-    name: Test Windows Installer
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Run installer regression tests
-        shell: powershell
-        run: |
-          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
-            -File scripts\tests\install-windows.Tests.ps1
-
   build-linux-gateway:
     name: Build Linux mini-host artifact
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs:
       - test
-      - installer-test
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout

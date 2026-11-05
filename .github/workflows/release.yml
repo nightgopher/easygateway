@@ -18,24 +18,16 @@ jobs:
         os:
           - ubuntu-latest
           - macos-26-intel
-          - windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate Unix installer
-        if: runner.os != 'Windows'
         run: /bin/bash scripts/tests/install-unix.Tests.sh
 
-      - name: Test Windows installer
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
-            -File scripts\tests\install-windows.Tests.ps1
-
-  # Build independently; the publish job still requires every installer test.
+  # Build independently; installer tests run in parallel and do not gate
+  # the release publish (验证性检查，失败跟进issue而非阻塞发版).
   release:
     name: Build and Release
     runs-on: ubuntu-latest
@@ -49,14 +41,8 @@ jobs:
             goarch: arm64
             suffix: linux-arm64
           - goos: darwin
-            goarch: amd64
-            suffix: darwin-amd64
-          - goos: darwin
             goarch: arm64
             suffix: darwin-arm64
-          - goos: windows
-            goarch: amd64
-            suffix: windows-amd64
 
     steps:
       - name: Checkout
@@ -75,13 +61,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           SUFFIX="${{ matrix.suffix }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "gateway-${SUFFIX}.exe" .
-            ls -lh "gateway-${SUFFIX}.exe"
-          else
-            go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "gateway-${SUFFIX}" .
-            ls -lh "gateway-${SUFFIX}"
-          fi
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "gateway-${SUFFIX}" .
+          ls -lh "gateway-${SUFFIX}"
 
       - name: Build deb package (Linux)
         if: matrix.goos == 'linux'
@@ -96,8 +77,7 @@ jobs:
           scripts/build-deb.sh "$VERSION" "${{ matrix.goarch }}" "dist"
           ls -lh dist/*.deb
 
-      - name: Upload artifact (Unix)
-        if: matrix.goos != 'windows'
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: gateway-${{ matrix.suffix }}
@@ -110,13 +90,6 @@ jobs:
           name: easygateway-deb-${{ matrix.suffix }}
           path: dist/*.deb
           if-no-files-found: error
-
-      - name: Upload artifact (Windows)
-        if: matrix.goos == 'windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: gateway-${{ matrix.suffix }}
-          path: go-gateway/gateway-${{ matrix.suffix }}.exe
 
   desktop-release:
     name: Build macOS desktop release
@@ -246,7 +219,6 @@ jobs:
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     needs:
-      - installer-tests
       - release
       - desktop-release
       - desktop-release-linux
@@ -272,9 +244,7 @@ jobs:
           # 复制二进制
           cp artifacts/gateway-linux-amd64/gateway-linux-amd64 release/
           cp artifacts/gateway-linux-arm64/gateway-linux-arm64 release/
-          cp artifacts/gateway-darwin-amd64/gateway-darwin-amd64 release/
           cp artifacts/gateway-darwin-arm64/gateway-darwin-arm64 release/
-          cp artifacts/gateway-windows-amd64/gateway-windows-amd64.exe release/
           # 复制 deb 包
           cp artifacts/easygateway-deb-linux-amd64/*.deb release/
           cp artifacts/easygateway-deb-linux-arm64/*.deb release/
@@ -288,8 +258,6 @@ jobs:
           cp go-gateway/.env.example release/default.env.example
           # 复制安装脚本
           cp scripts/install.sh release/
-          cp scripts/install.bat release/
-          cp scripts/install.ps1 release/
           cp artifacts/desktop-darwin-arm64/*.dmg release/
           # 桌面端签名更新产物不能缺失，否则已安装客户端无法更新。
           cp artifacts/desktop-darwin-arm64/easygateway-*-darwin-arm64.tar.gz release/
@@ -336,14 +304,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.sh | bash
           \`\`\`
 
-          \`\`\`cmd
-          curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
-          \`\`\`
-
-          \`\`\`powershell
-          \$installer = Join-Path \$env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.ps1 -OutFile \$installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \$installer
-          \`\`\`
-
           ### 更新日志
           ${CHANGELOG}
 
@@ -361,9 +321,7 @@ jobs:
           | Linux ARM64 服务端 (.deb) | \`easygateway-server_${CURRENT_TAG#v}-1_arm64.deb\` |
           | Linux x86_64 | \`gateway-linux-amd64\` |
           | Linux ARM64 | \`gateway-linux-arm64\` |
-          | macOS Intel | \`gateway-darwin-amd64\` |
           | macOS Apple Silicon | \`gateway-darwin-arm64\` |
-          | Windows x86_64 | \`gateway-windows-amd64.exe\` |
 
           桌面端与服务端是两个独立的 deb 包（\`easygateway\` 与 \`easygateway-server\`），可同时安装：桌面端管理网关，服务端提供 systemd 托管的网关进程。Linux 桌面端运行需要 libgtk-3 与 libwebkit2gtk-4.1（包依赖已声明）；用户级安装运行 \`easygateway-desktop-install-linux-*.sh\`，装到 \`~/.easygateway\` 并支持应用内更新。
 
@@ -394,17 +352,13 @@ jobs:
           files: |
             release/gateway-linux-amd64
             release/gateway-linux-arm64
-            release/gateway-darwin-amd64
             release/gateway-darwin-arm64
-            release/gateway-windows-amd64.exe
             release/*.deb
             release/*.tar.gz
             release/easygateway-desktop-install-linux-*.sh
             release/providers.yaml
             release/default.env.example
             release/install.sh
-            release/install.bat
-            release/install.ps1
             release/*.dmg
             release/gateway-*.tar.gz
             release/update-gateway-*.json
