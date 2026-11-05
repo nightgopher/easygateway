@@ -870,7 +870,7 @@ func (a *App) overviewView(c *ui.Context) {
 		case 3:
 			ui.Text(c, formatLatency(p.AvgLatency))
 		}
-	}).MinHeight(240)
+	}).Grow(1).MinHeight(240).MaxHeight(420)
 }
 func (a *App) modelsView(c *ui.Context) {
 	ui.Row(c).Wrap().Gap(8).Children(func() {
