@@ -26,20 +26,7 @@
 curl -fsSL https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.sh | bash
 ```
 
-### Windows (CMD)
-
-```cmd
-curl.exe -fsSL -o "%TEMP%\llm-gateway-install.bat" https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.bat && call "%TEMP%\llm-gateway-install.bat"
-```
-
-### Windows (PowerShell)
-
-```powershell
-$installer = Join-Path $env:TEMP 'llm-gateway-install.ps1'; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/nightgopher/easygateway/main/scripts/install.ps1 -OutFile $installer; powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer
-```
-
-安装脚本会自动完成：下载二进制 → 配置 PATH → 引导填入 API Key → 完成。
-Windows 请直接在 CMD 或 PowerShell 中运行对应命令，不需要 WSL 或 Bash。配置向导可逐个启用多个供应商，API Key 会掩码输入。重复运行会自动去除 PATH 中的重复安装项，并可在保留 Master Key 和自定义变量的前提下重新配置供应商。
+安装脚本会自动完成：下载二进制 → 配置 PATH → 引导填入 API Key → 完成。配置向导可逐个启用多个供应商，API Key 会掩码输入。重复运行会自动去除 PATH 中的重复安装项，并可在保留 Master Key 和自定义变量的前提下重新配置供应商。
 
 ### Debian / Ubuntu (.deb)
 
