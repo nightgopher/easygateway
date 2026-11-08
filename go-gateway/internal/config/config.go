@@ -14,17 +14,21 @@ import (
 
 // Config 应用全局配置
 type Config struct {
-	Port                        int
-	LogLevel                    string
-	MasterKey                   string
-	AdminToken                  string // 独立的管理端点 token（可选）
-	GLMAPIKey                   string
-	CopilotToken                string // GitHub Copilot token（短期有效，需要定期刷新）
-	CopilotGithubToken          string // GitHub OAuth token（用于刷新 Copilot token）
-	DeepVEnabled                bool   // DeepV Server（EasyCode/DeepVCode）是否启用
-	DeepVWorkDir                string // DeepV 工作目录（用于获取 Git 信息）
-	HTTPProxy                   string // HTTP 代理地址（如 http://127.0.0.1:7890，用于访问 ChatGPT）
-	ChatGPTAuthFile             string // ChatGPT/Pi OAuth auth.json 路径（可选）
+	Port               int
+	LogLevel           string
+	MasterKey          string
+	AdminToken         string // 独立的管理端点 token（可选）
+	GLMAPIKey          string
+	CopilotToken       string // GitHub Copilot token（短期有效，需要定期刷新）
+	CopilotGithubToken string // GitHub OAuth token（用于刷新 Copilot token）
+	DeepVEnabled       bool   // DeepV Server（EasyCode/DeepVCode）是否启用
+	DeepVWorkDir       string // DeepV 工作目录（用于获取 Git 信息）
+	HTTPProxy          string // HTTP 代理地址（如 http://127.0.0.1:7890，用于访问 ChatGPT）
+	ChatGPTAuthFile    string // ChatGPT/Pi OAuth auth.json 路径（可选）
+	// DisabledChannelLogin 禁用登录入口的渠道名（EASYGATEWAY_DISABLE_CHANNEL_LOGIN，
+	// 逗号分隔）。渠道仍会出现在 /admin/channels（登录态可见、可登出），但管理面板
+	// 不再提供登录按钮。用于额度改由伴生网关统一供给的渠道（如 workbuddy）。
+	DisabledChannelLogin        []string
 	Env                         string
 	CircuitFailureThreshold     int
 	CircuitRecoverySeconds      int
@@ -61,6 +65,7 @@ func Load() (*Config, error) {
 		DeepVWorkDir:                getEnv("DEEPV_WORK_DIR", ""),
 		HTTPProxy:                   getEnv("HTTP_PROXY", ""),
 		ChatGPTAuthFile:             getEnv("CHATGPT_AUTH_FILE", ""),
+		DisabledChannelLogin:        getEnvList("EASYGATEWAY_DISABLE_CHANNEL_LOGIN"),
 		Env:                         getEnv("ENV", "development"),
 		CircuitFailureThreshold:     getEnvInt("CIRCUIT_FAILURE_THRESHOLD", 3),
 		CircuitRecoverySeconds:      getEnvInt("CIRCUIT_RECOVERY_SECONDS", 30),
@@ -124,6 +129,17 @@ func getEnvBool(key string, defaultValue bool) bool {
 		return defaultValue
 	}
 	return strings.ToLower(value) == "true" || value == "1"
+}
+
+// getEnvList 解析逗号分隔的字符串列表；空白段与首尾空格会被剔除，全部为空时返回 nil。
+func getEnvList(key string) []string {
+	var out []string
+	for _, item := range strings.Split(os.Getenv(key), ",") {
+		if item = strings.ToLower(strings.TrimSpace(item)); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // loadArchiveConfig reads the three ARCHIVE_* environment variables. Missing

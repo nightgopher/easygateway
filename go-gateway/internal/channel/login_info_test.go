@@ -35,3 +35,19 @@ func TestLoginInfoReportsMissingConfigurationWithoutCredentials(t *testing.T) {
 		t.Fatal("OpenCode restriction missing")
 	}
 }
+
+func TestLoginInfoHonorsDisabledChannelLogin(t *testing.T) {
+	dir := t.TempDir()
+	orig := DisabledChannelLogin
+	DisabledChannelLogin = map[string]bool{"workbuddy": true}
+	defer func() { DisabledChannelLogin = orig }()
+
+	info := LoginInfoFor(NewWorkBuddyChannel(dir))
+	if info.Available || !strings.Contains(info.SetupHint, "EASYGATEWAY_DISABLE_CHANNEL_LOGIN") {
+		t.Fatalf("%+v", info)
+	}
+	// 未列入禁用清单的渠道不受影响。
+	if info := LoginInfoFor(NewCodeBuddyChannel(dir)); !info.Available {
+		t.Fatalf("%+v", info)
+	}
+}
