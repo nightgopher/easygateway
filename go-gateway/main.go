@@ -53,6 +53,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	// 禁用登录的渠道清单必须在配置加载后填充（.env 由 godotenv 在 Load 内读入）。
+	for _, name := range cfg.DisabledChannelLogin {
+		channel.DisabledChannelLogin[name] = true
+	}
 
 	logger := log.New(os.Stdout, "[gateway] ", log.LstdFlags)
 	logger.Printf("Starting go-llm-gateway on port %d", cfg.Port)
