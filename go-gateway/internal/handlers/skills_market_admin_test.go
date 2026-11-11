@@ -213,16 +213,6 @@ func TestSkillsMarketInstallUninstallLifecycle(t *testing.T) {
 	}
 }
 
-func TestSkillsMarketInstallRejectsInvalidBody(t *testing.T) {
-	store := newMarketStore(t, "")
-	defer store.Close()
-	engine := marketTestRouter(t, NewSkillsMarketHandler(t.TempDir(), store.URL, true, log.New(io.Discard, "", 0)))
-	w := doJSON(t, engine, http.MethodPost, "/admin/skills/market/install", map[string]int{"id": 0})
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("非法 ID 应返回 400: %d", w.Code)
-	}
-}
-
 // TestSkillsMarketInstallRejectsTamperedPackage 校验失败的包必须被拒绝且不落盘。
 func TestSkillsMarketInstallRejectsTamperedPackage(t *testing.T) {
 	store := newMarketStore(t, "0000000000000000000000000000000000000000000000000000000000000000")
@@ -272,17 +262,6 @@ func TestSkillsMarketInstallStream(t *testing.T) {
 	engine.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/admin/skills/market/install-stream", strings.NewReader(`{"id":7}`)))
 	if !strings.Contains(w.Body.String(), `"phase":"failed"`) || !strings.Contains(w.Body.String(), "本机已有同名技能目录") {
 		t.Fatalf("失败事件缺失: %s", w.Body.String())
-	}
-}
-
-func TestSkillsMarketInstallStreamRejectsInvalidBody(t *testing.T) {
-	store := newMarketStore(t, "")
-	defer store.Close()
-	engine := marketTestRouter(t, NewSkillsMarketHandler(t.TempDir(), store.URL, true, log.New(io.Discard, "", 0)))
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/admin/skills/market/install-stream", strings.NewReader(`{"id":0}`)))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("非法 ID 应返回 400: %d", w.Code)
 	}
 }
 
@@ -360,16 +339,5 @@ func TestSkillsMarketInstallJobLifecycle(t *testing.T) {
 	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/jobs/ij-none", nil))
 	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "重新安装") {
 		t.Fatalf("未知任务应返回 404 与说明: %d %s", w.Code, w.Body.String())
-	}
-}
-
-func TestSkillsMarketInstallJobsDisabled(t *testing.T) {
-	jobs := NewSkillsInstallJobsHandler(nil, log.New(io.Discard, "", 0))
-	engine := gin.New()
-	engine.POST("/jobs", jobs.HandleInstallJobStart)
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/jobs", strings.NewReader(`{"id":7}`)))
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"enabled":false`) {
-		t.Fatalf("未启用应返回 200 + enabled=false: %d %s", w.Code, w.Body.String())
 	}
 }

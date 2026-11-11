@@ -410,6 +410,22 @@ else
   DOCTOR="skipped"
 fi
 
+# ── 伴生网关健康（WorkBuddy 本地反代，health 端点无需鉴权）─────────────────────
+# 环境变量 WORKBUDDY_GATEWAY_HEALTH 覆盖地址；不可达不影响退出码，只进报告。
+WB_HEALTH_URL="${WORKBUDDY_GATEWAY_HEALTH:-http://127.0.0.1:8318/health}"
+WB_STATUS=$(curl -sf --max-time 8 "$WB_HEALTH_URL" 2>/dev/null | \
+  python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(f\"healthy v{d.get('version','?')}，模型 {d.get('model_count','?')} 个（{d.get('model_source','?')}）\")
+except Exception:
+    print('响应异常')
+" 2>/dev/null) || WB_STATUS=""
+if [ -z "$WB_STATUS" ]; then
+  WB_STATUS="unreachable（伴生网关可能未启动，deepseek-v4.1-flash 档不可用；检查 local.workbuddy-gateway 与上游新版本）"
+fi
+
 # ── 汇总报告 ─────────────────────────────────────────────────────────────────
 log "-- 上游比对 --"
 log "kilo 修剪: $PRUNED_NOTE ${RELOAD_NOTE:+($RELOAD_NOTE)}"
@@ -419,11 +435,13 @@ log "dsh registry: $DSH_NOTE"
 log "-- 主力探活 --"
 for r in "${PROBE_RESULTS[@]}"; do log "$r"; done
 log "匿名模型 doctor: $DOCTOR"
+log "WorkBuddy 伴生网关: $WB_STATUS"
 log "== 结束 =="
 
 mkdir -p "$(dirname "$LOG_PATH")"
 {
-  printf '%s | pruned=%s reload=%s | opencode=%s | %s\n' \
+  printf '%s | pruned=%s reload=%s | opencode=%s | wb=%s | %s\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "$PRUNED_NOTE" "$RELOAD_NOTE" "$OPENCODE_STATUS" \
+    "$(printf '%s' "$WB_STATUS" | cut -c1-40)" \
     "$(IFS='; '; echo "${PROBE_RESULTS[*]}")"
 } >> "$LOG_PATH"

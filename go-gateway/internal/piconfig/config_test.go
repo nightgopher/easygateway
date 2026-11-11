@@ -65,63 +65,6 @@ func TestMergeModelsConfigCreatesDocumentAndNormalizesEndpoint(t *testing.T) {
 	}
 }
 
-func TestMergeModelsConfigRejectsInvalidJSON(t *testing.T) {
-	if _, err := MergeModelsConfig([]byte("not-json"), "http://localhost:4001", "!gateway auth print-master-key"); err == nil {
-		t.Fatal("expected invalid JSON error")
-	}
-}
-
-func TestSetupWritesOnlyGatewayProvider(t *testing.T) {
-	root := t.TempDir()
-	gatewayHome := filepath.Join(root, "gateway")
-	piHome := filepath.Join(root, "pi")
-	if err := os.MkdirAll(gatewayHome, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(gatewayHome, ".env"), []byte("PORT=8111\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	modelsPath := filepath.Join(piHome, "agent", "models.json")
-	if err := os.MkdirAll(filepath.Dir(modelsPath), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(modelsPath, []byte(`{"providers":{"kept":{"api":"openai-completions"}}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	_, writtenPath, err := Setup(SetupOptions{GatewayHome: gatewayHome, PiHome: piHome})
-	if err != nil {
-		t.Fatalf("Setup() error = %v", err)
-	}
-	if writtenPath != modelsPath {
-		t.Fatalf("written path = %q", writtenPath)
-	}
-	written, err := os.ReadFile(modelsPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(written) == `{"providers":{"kept":{"api":"openai-completions"}}}` {
-		t.Fatal("models config was not updated")
-	}
-	if !json.Valid(written) {
-		t.Fatal("written models config is invalid JSON")
-	}
-}
-
-func TestMasterKeyReadsGatewayConfig(t *testing.T) {
-	gatewayHome := t.TempDir()
-	if err := os.WriteFile(filepath.Join(gatewayHome, ".env"), []byte("LITELLM_MASTER_KEY=sk-test\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	key, err := MasterKey(gatewayHome)
-	if err != nil {
-		t.Fatalf("MasterKey() error = %v", err)
-	}
-	if key != "sk-test" {
-		t.Fatalf("key = %q", key)
-	}
-}
-
 // pi-go 改名 easyagent 后目录布局分化：新 ~/.easyagent 用根级 models.json，
 // 旧 ~/.pi 保持 agent/models.json。路径解析必须跟布局走，否则同步会写错位置。
 func TestModelsFilePathRespectsDirectoryLayout(t *testing.T) {

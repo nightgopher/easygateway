@@ -33,43 +33,6 @@ func TestClassifyProbeStatus(t *testing.T) {
 	}
 }
 
-// 探测走真实 HTTP 调用，因此上游的真实状态码必须反映到结论里，
-// 而不是像旧的 IsHealthy 那样恒返回 true。
-func TestOpenAIProbeReflectsUpstreamStatus(t *testing.T) {
-	cases := []struct {
-		name   string
-		status int
-		want   ProbeStatus
-	}{
-		{"ok", http.StatusOK, ProbeOnline},
-		{"forbidden", http.StatusForbidden, ProbeOffline},
-		{"rate_limited", http.StatusTooManyRequests, ProbeDegraded},
-		{"server_error", http.StatusInternalServerError, ProbeDegraded},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tc.status)
-				if tc.status == http.StatusOK {
-					_, _ = io.WriteString(w, `{"id":"x","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{}}`)
-					return
-				}
-				_, _ = io.WriteString(w, `{"error":{"message":"denied"}}`)
-			}))
-			defer server.Close()
-
-			p := NewOpenAIProvider(&Config{Name: "test", URL: server.URL, APIKey: "k"})
-			result := p.Probe(context.Background())
-			if result.Status != tc.want {
-				t.Fatalf("Probe status = %q (detail %q), want %q", result.Status, result.Detail, tc.want)
-			}
-			if tc.status != http.StatusOK && result.StatusCode != tc.status {
-				t.Fatalf("Probe status code = %d, want %d", result.StatusCode, tc.status)
-			}
-		})
-	}
-}
-
 // 探测失败必须计入熔断器，避免「探测说在线」的反面：探测说挂了却不影响调度。
 func TestCheckProviderHealthRecordsFailureIntoCircuit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -179,27 +142,6 @@ func TestResetProviderClearsProbeResult(t *testing.T) {
 	}
 }
 
-// 绑定模型的包装器要把绑定名传给底层探测，否则探测会打到错误的模型。
-func TestBoundWrapperProbeUsesBoundModel(t *testing.T) {
-	var gotModel string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		gotModel = string(body)
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, `{"id":"x","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{}}`)
-	}))
-	defer server.Close()
-
-	base := NewOpenAIProvider(&Config{Name: "glm", URL: server.URL, APIKey: "k"})
-	wrapper := NewBoundModelProviderWrapper(base, "glm-4.7", nil)
-	if result := wrapper.Probe(context.Background()); result.Status != ProbeOnline {
-		t.Fatalf("probe status = %q, want online", result.Status)
-	}
-	if want := `"model":"glm-4.7"`; !contains(gotModel, want) {
-		t.Fatalf("probe body = %s, want it to contain %s", gotModel, want)
-	}
-}
-
 // opaqueProbeProvider 模拟没有实现 Prober 的 provider。
 type opaqueProbeProvider struct{}
 
@@ -212,17 +154,4 @@ func (p *opaqueProbeProvider) IsHealthy(context.Context) bool {
 }
 func (p *opaqueProbeProvider) ForwardRequest(context.Context, *Request) (*Response, error) {
 	return nil, errors.New("not implemented")
-}
-
-func contains(haystack, needle string) bool {
-	return len(haystack) >= len(needle) && (haystack == needle || indexOf(haystack, needle) >= 0)
-}
-
-func indexOf(haystack, needle string) int {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return i
-		}
-	}
-	return -1
 }

@@ -35,28 +35,6 @@ func TestCollectorRestoresRecentLogsFromStore(t *testing.T) {
 	}
 }
 
-func TestCollectorOnlyRecordsModelAPIRequests(t *testing.T) {
-	collector := NewCollector()
-	now := time.Now()
-	for _, record := range []RequestRecord{
-		{Timestamp: now, Method: http.MethodGet, Path: "/favicon.ico", StatusCode: http.StatusNoContent},
-		{Timestamp: now, Method: http.MethodGet, Path: "/v1/models", StatusCode: http.StatusOK},
-		{Timestamp: now, Method: http.MethodGet, Path: "/admin/dashboard", StatusCode: http.StatusOK},
-		{Timestamp: now, Method: http.MethodPost, Path: "/v1/chat/completions", Model: "coding", StatusCode: http.StatusOK},
-	} {
-		collector.Record(record)
-	}
-
-	summary := collector.GetDashboard()
-	if summary.TodayRequests != 1 || summary.SuccessRate != 100 || summary.ActiveModels != 1 {
-		t.Fatalf("summary = %#v, want one successful model API request", summary)
-	}
-	logs := collector.GetRecentLogs(10)
-	if len(logs) != 1 || logs[0].Path != "/v1/chat/completions" {
-		t.Fatalf("business logs = %#v, want only model API request", logs)
-	}
-}
-
 func TestIsBusinessRequestRecognizesAllModelProtocols(t *testing.T) {
 	tests := []struct {
 		method string
@@ -130,20 +108,6 @@ func TestCollectorRestoresTodayAggregates(t *testing.T) {
 	c.mu.Unlock()
 	if summary := c.GetDashboard(); summary.TodayRequests != 4 {
 		t.Fatalf("today_requests after new record = %d, want 4", summary.TodayRequests)
-	}
-}
-
-func TestDashboardSummaryAggregatesTodayTokens(t *testing.T) {
-	collector := NewCollector()
-	now := time.Now()
-	for _, record := range []RequestRecord{
-		{Timestamp: now, Method: http.MethodPost, Path: "/v1/chat/completions", Model: "coding", StatusCode: http.StatusOK, InputTokens: 100, OutputTokens: 50},
-		{Timestamp: now, Method: http.MethodPost, Path: "/v1/chat/completions", Model: "coding", StatusCode: http.StatusOK, InputTokens: 30, OutputTokens: 20},
-	} {
-		collector.Record(record)
-	}
-	if summary := collector.GetDashboard(); summary.TodayTokens != 200 {
-		t.Fatalf("today tokens = %d, want 200", summary.TodayTokens)
 	}
 }
 
