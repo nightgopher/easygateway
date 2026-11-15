@@ -75,6 +75,32 @@ type Dashboard struct {
 	Models    []Model    `json:"models"`
 }
 
+// GatewayUpdateCheck 对应网关 GET /admin/update/check：实时拉取 Release
+// 签名清单并与网关当前版本比较；不下载归档、不做任何变更。
+type GatewayUpdateCheck struct {
+	Version         string              `json:"version"`
+	Latest          GatewayUpdateLatest `json:"latest"`
+	UpdateAvailable bool                `json:"update_available"`
+}
+
+type GatewayUpdateLatest struct {
+	Version string `json:"version"`
+	Date    string `json:"date"`
+	Notes   string `json:"notes"`
+}
+
+// GatewayUpdateStatus 对应网关 GET /admin/update/status：当前版本与最近
+// 一次更新的日志尾部；旧版网关无此端点时拉取失败不影响页面。
+type GatewayUpdateStatus struct {
+	Version  string                 `json:"version"`
+	ApplyLog *GatewayUpdateApplyLog `json:"apply_log"`
+}
+
+type GatewayUpdateApplyLog struct {
+	UpdatedAt string `json:"updated_at"`
+	Tail      string `json:"tail"`
+}
+
 // StatsHistory 对应网关 GET /admin/stats/history：按天序列 + 模型/渠道排行。
 type StatsHistory struct {
 	From      string            `json:"from"`

@@ -208,6 +208,9 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 | `/admin/providers/:name` | PATCH | 设置 `{"enabled":true/false}`，运行时启停 Provider |
 | `/admin/providers/:name/reset` | POST | 手动重置熔断器 |
 | `/admin/models/prune` | POST | 清理探活确定性失败的模型（编辑 providers.yaml + 热重载） |
+| `/admin/update/check` | GET | 拉取最新 Release 签名清单并与当前版本比较，不下载归档、不做变更 |
+| `/admin/update/apply` | POST | 一键更新：把 `gateway update` 作为分离子进程拉起（验签下载、隔离端口预检、原子替换、重启宿主服务、失败自动回滚），立即返回 202；进行中重复调用返回 409 |
+| `/admin/update/status` | GET | 当前版本（dev 构建附 vcs 短修订）与最近一次更新的日志尾部 `data/gateway-update.log` |
 | `/admin/gateway-keys` | GET / POST | 列出/创建 gateway key（列表只回 token 提示） |
 | `/admin/gateway-keys/:id` | PATCH / DELETE | 启停/删除 gateway key |
 | `/admin/gateway-keys/:id/rotate` | POST | 轮换 gateway key 的 token |

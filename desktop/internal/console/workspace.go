@@ -674,6 +674,7 @@ func (a *App) addMemory() {
 }
 func (a *App) settingsView(c *ui.Context) {
 	ui.Scroll(c).Grow(1).Gap(16).Children(func() {
+		a.updateCenterView(c)
 		card(c, func() {
 			ui.Text(c, "助理人设").FontSize(18).Bold()
 			muted(c, "留空使用默认提示词。配置保存在当前连接的网关主机。")
@@ -777,6 +778,64 @@ var clientTargetNames = map[string]string{
 // ccswitchView 渲染「从 cc-switch 迁移」面板：扫描预览、勾选与一键导入。
 // 扫描在网关主机上执行（默认 ~/.cc-switch，可指定路径）；没有 cc-switch 或
 // 网关版本过低时给出明确指引而不是报错堆栈。
+// updateCenterView 渲染设置页的「网关更新」卡：显示网关当前版本，检查
+// Release 清单给出新版本与说明；一键更新由网关把 `gateway update` 作为
+// 分离子进程拉起，桌面端轮询版本变化判断完成。旧版网关没有更新端点时
+// 检查会报错提示，不影响设置页其余卡片。
+func (a *App) updateCenterView(c *ui.Context) {
+	// 旧版网关没有更新端点（拉不到版本）时整卡隐藏，避免展示一个
+	// 点击必报错的入口。
+	if a.updateStatus.Version == "" {
+		return
+	}
+	card(c, func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "网关更新").FontSize(18).Bold()
+			if v := a.updateStatus.Version; v != "" {
+				chip(c, "当前 "+v, c.Theme().TextMuted)
+			}
+			ui.Spacer(c)
+			ui.Button(c, "检查更新").Label("检查网关更新").Disabled(a.busy != "").OnClick(a.checkGatewayUpdate)
+		})
+		muted(c, "检查走 Release 签名清单；更新过程由网关自动预检与回滚，失败保留旧版本。")
+		if a.updateChecked {
+			latest := a.updateCheck.Latest
+			if a.updateCheck.UpdateAvailable {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Textf(c, "发现新版本: %s → %s", a.updateCheck.Version, latest.Version).Bold().Grow(1)
+					ui.PrimaryButton(c, "一键更新").Label("更新网关到 " + latest.Version).Disabled(a.busy != "").OnClick(a.applyGatewayUpdate)
+				})
+				if latest.Date != "" {
+					muted(c, "发布时间 "+latest.Date)
+				}
+				if latest.Notes != "" {
+					ui.Text(c, truncateLines(latest.Notes, 6)).TextColor(c.Theme().TextMuted).Selectable()
+				}
+			} else {
+				ui.Textf(c, "已是最新版本（%s）。", a.updateCheck.Version).TextColor(c.Theme().TextMuted)
+			}
+		}
+		if log := a.updateStatus.ApplyLog; log != nil && strings.TrimSpace(log.Tail) != "" {
+			ui.Divider(c)
+			ui.Textf(c, "上次更新 %s：", log.UpdatedAt).FontSize(13).Bold()
+			ui.Text(c, truncateLines(log.Tail, 8)).FontSize(12).TextColor(c.Theme().TextMuted).Selectable()
+		}
+	})
+}
+
+// truncateLines 保留前 maxLines 行并整体截断，避免超长更新说明撑爆卡片。
+func truncateLines(text string, maxLines int) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) > maxLines {
+		lines = append(lines[:maxLines], "……")
+	}
+	out := strings.Join(lines, "\n")
+	if len(out) > 800 {
+		out = out[:800] + "……"
+	}
+	return out
+}
+
 func (a *App) ccswitchView(c *ui.Context) {
 	theme := c.Theme()
 	imported := a.ccImportedNames()
