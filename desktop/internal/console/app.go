@@ -79,6 +79,9 @@ type App struct {
 	gatewayConfigErr                                                      string
 	corsConfig                                                            CORSConfig
 	corsDraft                                                             string
+	updateCheck                                                           GatewayUpdateCheck
+	updateChecked                                                         bool
+	updateStatus                                                          GatewayUpdateStatus
 	promptErr                                                             string
 	configs                                                               map[string]ClientConfig
 	configSelection                                                       map[string]map[string]bool
@@ -199,6 +202,9 @@ func (a *App) navigate(page string) {
 	a.loaded = false
 	a.table = ui.ListState{}
 	a.logSelected = -1
+	a.updateCheck = GatewayUpdateCheck{}
+	a.updateChecked = false
+	a.updateStatus = GatewayUpdateStatus{}
 	if page != "connections" {
 		a.reload()
 	}
@@ -272,6 +278,9 @@ func (a *App) reload() {
 			// 用量成本独立容错：旧版网关没有用量成本端点时成本指标与明细卡整体隐藏。
 			var usage Usage
 			usageErr := c.JSON(ctx, "GET", "/usage?days=1", nil, &usage)
+			// 网关版本独立容错：旧版网关没有 /update/status 时概览不显示版本行。
+			var gwStatus GatewayUpdateStatus
+			gwStatusErr := c.JSON(ctx, "GET", "/update/status", nil, &gwStatus)
 			// 迁移引导：网关刚起步（provider 很少）时看看 cc-switch 能不能
 			// 带来存量配置——先问网关主机，再退回本机检测（远程网关场景）。
 			hint := CCSwitchHint{}
@@ -297,6 +306,11 @@ func (a *App) reload() {
 					a.usage = usage
 				} else {
 					a.usage = Usage{}
+				}
+				if gwStatusErr == nil {
+					a.updateStatus = gwStatus
+				} else {
+					a.updateStatus = GatewayUpdateStatus{}
 				}
 				a.dashboard = d
 				a.ccHint = hint
@@ -423,6 +437,10 @@ func (a *App) reload() {
 			if err := c.JSON(ctx, "GET", "/ccswitch"+ccswitchHomeQuery(a.ccHomeDraft), nil, &scan); err != nil {
 				scan = CCSwitchScan{Error: "扫描失败：" + err.Error()}
 			}
+			// 网关更新端点尽力而为：旧版网关没有 /update/status 时
+			// 更新中心整卡隐藏（Version 为空即视为不支持）。
+			var gwStatus GatewayUpdateStatus
+			gwStatusErr := c.JSON(ctx, "GET", "/update/status", nil, &gwStatus)
 			return func() {
 				a.gatewayConfig = gatewayConfig
 				a.gatewayConfigErr = ""
@@ -442,6 +460,9 @@ func (a *App) reload() {
 				a.acceptCCSwitchScan(scan)
 				a.ccUpload = nil
 				a.ccRemote = false
+				if gwStatusErr == nil {
+					a.updateStatus = gwStatus
+				}
 				a.loaded = true
 			}, nil
 		case "assistant":
@@ -631,6 +652,9 @@ func (a *App) resetHost() {
 	a.table = ui.ListState{}
 	a.notice = ""
 	a.problem = ""
+	a.updateCheck = GatewayUpdateCheck{}
+	a.updateChecked = false
+	a.updateStatus = GatewayUpdateStatus{}
 	a.browserOpen = false
 	a.browserPath, a.browserParent = "", ""
 	a.browserDirs = nil
@@ -701,6 +725,82 @@ func (a *App) channelExpiryCounts() (expired, expiring int) {
 		}
 	}
 	return expired, expiring
+}
+
+// checkGatewayUpdate 检查网关更新：拉 Release 清单比较 + 顺带取上次更新
+// 日志尾部（旧版网关无该端点时只提示检查失败，不影响其余页面）。
+func (a *App) checkGatewayUpdate() {
+	a.work("正在检查网关更新", 30*time.Second, func(ctx context.Context, c *connection.Client) (func(), error) {
+		var chk GatewayUpdateCheck
+		if err := c.JSON(ctx, "GET", "/update/check", nil, &chk); err != nil {
+			return nil, err
+		}
+		var st GatewayUpdateStatus
+		statusErr := c.JSON(ctx, "GET", "/update/status", nil, &st)
+		return func() {
+			a.updateCheck = chk
+			a.updateChecked = true
+			if statusErr == nil {
+				a.updateStatus = st
+			}
+		}, nil
+	})
+}
+
+// applyGatewayUpdate 一键更新：网关把 `gateway update` 作为分离子进程拉起
+// （验签下载、隔离端口预检、原子替换、重启宿主服务、失败自动回滚都在
+// 网关侧 CLI 完成），随后轮询版本变化判断完成——重启窗口内请求会失败，
+// 静默重试直到看到新版本或超时。
+func (a *App) applyGatewayUpdate() {
+	target := a.updateCheck.Latest.Version
+	oldVersion := a.updateCheck.Version
+	if target == "" || a.busy != "" {
+		return
+	}
+	a.work("正在更新网关到 "+target, 4*time.Minute, func(ctx context.Context, c *connection.Client) (func(), error) {
+		var resp struct {
+			Started bool   `json:"started"`
+			Reason  string `json:"reason"`
+			Error   string `json:"error"`
+		}
+		if err := c.JSON(ctx, "POST", "/update/apply", nil, &resp); err != nil {
+			return nil, err
+		}
+		if resp.Error != "" {
+			return nil, errors.New(resp.Error)
+		}
+		if !resp.Started {
+			return func() { a.notice = resp.Reason }, nil
+		}
+		deadline := time.Now().Add(3 * time.Minute)
+		for time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(3 * time.Second):
+			}
+			var st GatewayUpdateStatus
+			if err := c.JSON(ctx, "GET", "/update/status", nil, &st); err != nil {
+				continue // 重启窗口：连接失败属预期，继续轮询
+			}
+			if st.Version != "" && st.Version != oldVersion && strings.HasPrefix(strings.TrimPrefix(st.Version, "v"), strings.TrimPrefix(target, "v")) {
+				return func() {
+					a.updateStatus = st
+					a.updateCheck = GatewayUpdateCheck{} // 重新检查后才显示最新比较结果
+					a.updateChecked = false
+					a.reload()
+					a.notice = "网关已更新到 " + target
+				}, nil
+			}
+		}
+		var st GatewayUpdateStatus
+		_ = c.JSON(ctx, "GET", "/update/status", nil, &st)
+		hint := "更新未在预期时间内完成"
+		if st.ApplyLog != nil && strings.TrimSpace(st.ApplyLog.Tail) != "" {
+			hint += "；网关侧日志尾部：\n" + st.ApplyLog.Tail
+		}
+		return nil, errors.New(hint)
+	})
 }
 
 func split(value string) []string {

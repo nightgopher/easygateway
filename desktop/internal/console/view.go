@@ -813,6 +813,9 @@ func (a *App) overviewView(c *ui.Context) {
 			})
 			ui.Row(c).Gap(20).Children(func() {
 				muted(c, "运行时间  "+s.Uptime)
+				if a.updateStatus.Version != "" {
+					muted(c, "网关版本  "+a.updateStatus.Version)
+				}
 				if s.CacheHitRate != nil {
 					muted(c, "缓存读取  "+shortNumber(s.CacheRead))
 				}

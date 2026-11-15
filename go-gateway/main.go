@@ -205,6 +205,7 @@ func main() {
 	passthroughHandler := handlers.NewPassthroughHandler(router, logger)
 	healthHandler := handlers.NewHealthHandler(router, logger)
 	adminHandler := handlers.NewAdminHandler(router, collector, logger, sqliteStore)
+	updateAdminHandler := handlers.NewUpdateAdminHandler(version)
 	configAdminHandler := handlers.NewConfigAdminHandler(reloader)
 	piConfigHandler := handlers.NewPiConfigHandler(defaultGatewayHome(), defaultPiHome(), logger, router)
 	clientConfigHandler := handlers.NewClientConfigHandler(defaultGatewayHome(), defaultZCodeHome(), defaultDshHome(), router, logger)
@@ -296,6 +297,9 @@ func main() {
 		admin.PUT("/routes/:model", adminHandler.HandleUpdateRoute)
 		admin.GET("/logs", adminHandler.HandleLogs)
 		admin.GET("/health", adminHandler.HandleHealth)
+		admin.GET("/update/check", updateAdminHandler.HandleUpdateCheck)
+		admin.POST("/update/apply", updateAdminHandler.HandleUpdateApply)
+		admin.GET("/update/status", updateAdminHandler.HandleUpdateStatus)
 		admin.GET("/config", adminHandler.HandleConfig)
 		admin.GET("/config/status", configAdminHandler.HandleStatus)
 		admin.GET("/config/cors", configAdminHandler.HandleCORS)
@@ -719,6 +723,9 @@ func updateCommand(args []string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stdout, "最新版本: %s（当前: %s）\n", manifest.Version, version)
+	if !looksLikeReleaseTag(version) {
+		fmt.Fprintf(os.Stdout, "提示: 当前版本 %s 不是 Release tag，可能由更新定时通道（main 构建）或本地构建管理；更新会替换为清单中的 Release 版本。\n", version)
+	}
 	if manifest.Date != "" {
 		fmt.Fprintf(os.Stdout, "发布时间: %s\n", manifest.Date)
 	}
@@ -797,6 +804,24 @@ func updateCommand(args []string) error {
 	}
 	fmt.Fprintf(os.Stdout, "更新完成: %s -> %s\n", version, manifest.Version)
 	return nil
+}
+
+// looksLikeReleaseTag 粗判当前版本串是否为 Release tag 形态（v 前缀 + 语义化
+// 版本）；dev、main-SHA 等构建返回 false，update check 据此提示更新通道。
+func looksLikeReleaseTag(v string) bool {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) != 3 {
+		return false
+	}
+	for i, part := range parts {
+		if i < 2 {
+			if part == "" || strings.ContainsFunc(part, func(r rune) bool { return r < '0' || r > '9' }) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // providerCommand 快速接入新供应商：
