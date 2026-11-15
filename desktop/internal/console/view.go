@@ -424,16 +424,17 @@ func (a *App) editor(c *ui.Context) {
 						ui.Row(c.Key("entry-" + name)).Gap(8).AlignItems(ui.Center).Children(func() {
 							ui.Text(c, fmt.Sprintf("%d. %s", i+1, name)).Grow(1).MinWidth(0).SingleLine()
 							if i > 0 {
-								ui.Button(c, "上移 "+name).Disabled(a.busy != "").OnClick(func() {
+								// 可见文案用紧凑符号；无障碍名保留完整语义。
+								ui.Button(c, "↑").Label("上移 " + name).Disabled(a.busy != "").OnClick(func() {
 									a.editorOrder[i-1], a.editorOrder[i] = a.editorOrder[i], a.editorOrder[i-1]
 								})
 							}
 							if !last {
-								ui.Button(c, "下移 "+name).Disabled(a.busy != "").OnClick(func() {
+								ui.Button(c, "↓").Label("下移 " + name).Disabled(a.busy != "").OnClick(func() {
 									a.editorOrder[i+1], a.editorOrder[i] = a.editorOrder[i], a.editorOrder[i+1]
 								})
 							}
-							ui.Button(c, "移除 "+name).Disabled(a.busy != "").OnClick(func() {
+							ui.Button(c, "移除").Label("移除 " + name).Disabled(a.busy != "").OnClick(func() {
 								a.editorOrder = append(a.editorOrder[:i], a.editorOrder[i+1:]...)
 							})
 						})
@@ -820,37 +821,39 @@ func (a *App) overviewView(c *ui.Context) {
 				}
 			})
 		})
-
-		tally := map[string]int{}
-		for _, p := range a.dashboard.Providers {
-			switch {
-			case p.Status == "online":
-				tally["online"]++
-			case p.Status == "offline":
-				tally["offline"]++
-			case p.Status == "degraded":
-				tally["degraded"]++
-			default:
-				tally["unknown"]++
-			}
+	})
+	tally := map[string]int{}
+	for _, p := range a.dashboard.Providers {
+		switch {
+		case p.Status == "online":
+			tally["online"]++
+		case p.Status == "offline":
+			tally["offline"]++
+		case p.Status == "degraded":
+			tally["degraded"]++
+		default:
+			tally["unknown"]++
 		}
-		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "上游健康").FontSize(18).Bold()
-			if tally["online"] > 0 {
-				chip(c, fmt.Sprintf("%d 在线", tally["online"]), okGreen)
-			}
-			if tally["degraded"] > 0 {
-				chip(c, fmt.Sprintf("%d 降级", tally["degraded"]), theme.Accent)
-			}
-			if tally["offline"] > 0 {
-				chip(c, fmt.Sprintf("%d 离线", tally["offline"]), theme.Danger)
-			}
-			if tally["unknown"] > 0 {
-				chip(c, fmt.Sprintf("%d 未探测", tally["unknown"]), theme.TextMuted)
-			}
-			ui.Spacer(c)
-			ui.SearchField(c, &a.overviewFilter).Placeholder("搜索 Provider...").Width(200)
-		})
+	}
+	// 「上游健康」标题与搜索框固定在滚动区外、紧贴 Provider 表：滚动卡片
+	// 时搜索框不消失，过滤的表格始终在搜索框正下方可见（页面级控件常驻，
+	// 与上方“用量趋势范围”同一原则）。
+	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "上游健康").FontSize(18).Bold()
+		if tally["online"] > 0 {
+			chip(c, fmt.Sprintf("%d 在线", tally["online"]), okGreen)
+		}
+		if tally["degraded"] > 0 {
+			chip(c, fmt.Sprintf("%d 降级", tally["degraded"]), theme.Accent)
+		}
+		if tally["offline"] > 0 {
+			chip(c, fmt.Sprintf("%d 离线", tally["offline"]), theme.Danger)
+		}
+		if tally["unknown"] > 0 {
+			chip(c, fmt.Sprintf("%d 未探测", tally["unknown"]), theme.TextMuted)
+		}
+		ui.Spacer(c)
+		ui.SearchField(c, &a.overviewFilter).Placeholder("搜索 Provider...").Width(200)
 	})
 
 	if len(a.dashboard.Providers) == 0 {
@@ -1011,8 +1014,26 @@ func (a *App) providersView(c *ui.Context) {
 	if a.unloadedOrEmpty(c, len(a.providers), "没有 Provider") {
 		return
 	}
-	ui.List(c, nil, len(a.providers), func(i int) {
-		p := a.providers[i]
+	// 管理页与概览页同一搜索语义：按名称、状态与熔断器状态过滤。
+	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+		ui.SearchField(c, &a.providerFilter).Placeholder("搜索 Provider...").Grow(1)
+	})
+	filter := strings.ToLower(strings.TrimSpace(a.providerFilter))
+	visible := make([]Provider, 0, len(a.providers))
+	for _, p := range a.providers {
+		if filter != "" && !strings.Contains(strings.ToLower(p.Name), filter) &&
+			!strings.Contains(strings.ToLower(p.Status), filter) &&
+			!strings.Contains(strings.ToLower(p.State), filter) {
+			continue
+		}
+		visible = append(visible, p)
+	}
+	if len(visible) == 0 {
+		empty(c, "没有匹配的 Provider")
+		return
+	}
+	ui.List(c, nil, len(visible), func(i int) {
+		p := visible[i]
 		ui.Column(c.Key(p.Name)).Children(func() {
 			row(c, func() {
 				ui.Row(c).Gap(12).Children(func() {
@@ -1104,9 +1125,11 @@ func (a *App) logsView(c *ui.Context) {
 	}
 	a.table.Sort = &a.logSort
 	a.table.Selected = &a.logSelected
+	// key 必须是行的纯身份（不能混入排序索引）：排序或筛选变化时，
+	// mygo 依据 key 让选中状态跟随同一条日志，详情面板不会指错行。
 	a.table.Key = func(i int) any {
 		l := filtered.At(order[i])
-		return l.RequestID + l.Timestamp + fmt.Sprint(order[i])
+		return l.RequestID + l.Timestamp
 	}
 	renderTable := func() {
 		ui.Table(c, &a.table, cols, filtered.Len(), func(row, col int) {
