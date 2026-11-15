@@ -40,7 +40,7 @@ type App struct {
 	models                                                                []Model
 	routes                                                                []Route
 	logs                                                                  []Log
-	logLimit, logFilter                                                   string
+	logLimit, logFilter, providerFilter                                   string
 	logSelected                                                           int
 	table                                                                 ui.ListState
 	logSort                                                               ui.SortOrder
