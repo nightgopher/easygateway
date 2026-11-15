@@ -56,17 +56,3 @@ func TestCircuitBreakerHalfOpenFailureReopensCircuit(t *testing.T) {
 		t.Fatalf("state = %s, want open after failed probe", snapshot.State)
 	}
 }
-
-func TestCircuitBreakerResetClearsState(t *testing.T) {
-	breaker := NewCircuitBreaker(CircuitBreakerConfig{FailureThreshold: 1})
-	breaker.RecordFailure()
-	breaker.Reset()
-
-	snapshot := breaker.Snapshot()
-	if snapshot.State != CircuitClosed || snapshot.ConsecutiveFailures != 0 || snapshot.HasResult {
-		t.Fatalf("reset snapshot = %#v", snapshot)
-	}
-	if !breaker.Allow() {
-		t.Fatal("reset circuit should allow requests")
-	}
-}

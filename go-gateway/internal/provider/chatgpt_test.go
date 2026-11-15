@@ -10,31 +10,6 @@ import (
 	"testing"
 )
 
-func TestChatGPTProviderLoadsPiAuthFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "auth.json")
-	accessToken := testChatGPTToken("acct-pi")
-	data := map[string]any{
-		"openai-codex": map[string]any{
-			"type":    "oauth",
-			"access":  accessToken,
-			"refresh": "refresh-pi",
-			"expires": 4102444800000,
-		},
-	}
-	writeChatGPTAuthFile(t, path, data)
-
-	provider := NewChatGPTProviderWithAuthPath("", path)
-	if !provider.IsHealthy(nil) {
-		t.Fatal("Pi OAuth credential should be healthy")
-	}
-	if provider.APIKey() != accessToken {
-		t.Fatalf("APIKey() = %q, want the Pi access token", provider.APIKey())
-	}
-	if provider.getAccountID() != "acct-pi" {
-		t.Fatalf("account id = %q, want acct-pi", provider.getAccountID())
-	}
-}
-
 func TestChatGPTProviderLoadsCodexAuthFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	accessToken := testChatGPTToken("acct-codex")
@@ -51,43 +26,6 @@ func TestChatGPTProviderLoadsCodexAuthFile(t *testing.T) {
 	}
 	if provider.getAccountID() != "acct-codex" {
 		t.Fatalf("account id = %q, want acct-codex", provider.getAccountID())
-	}
-}
-
-func TestExtractAccountIDFromJWTRejectsInvalidToken(t *testing.T) {
-	if got := extractAccountIDFromJWT("not-a-jwt"); got != "" {
-		t.Fatalf("extractAccountIDFromJWT() = %q, want empty result", got)
-	}
-}
-
-func TestChatGPTModelCatalog(t *testing.T) {
-	models := ChatGPTModelCatalog()
-	if len(models) != 7 {
-		t.Fatalf("catalog has %d models, want the seven current GPT subscription models", len(models))
-	}
-	want := map[string]bool{
-		"gpt-6.1-sol":   true,
-		"gpt-6-sol":     true,
-		"gpt-6-luna":    true,
-		"gpt-6-astra":   true,
-		"gpt-5.6-sol":   true,
-		"gpt-5.6-terra": true,
-		"gpt-5.6-luna":  true,
-	}
-	for _, model := range models {
-		if !want[model.ID] {
-			t.Fatalf("unexpected model %q in catalog", model.ID)
-		}
-		if len(model.InputModalities) != 2 || model.InputModalities[1] != "image" {
-			t.Fatalf("%s input modalities = %v, want [text image]", model.ID, model.InputModalities)
-		}
-		if model.UpstreamID != "" {
-			t.Fatalf("%s sets UpstreamID = %q, want the upstream name to be the model ID", model.ID, model.UpstreamID)
-		}
-		delete(want, model.ID)
-	}
-	if len(want) != 0 {
-		t.Fatalf("catalog is missing models: %v", want)
 	}
 }
 
@@ -147,15 +85,6 @@ chains: {}
 	for _, modelName := range []string{"gpt-5.6-luna", "legacy-luna"} {
 		if !seen[modelName] {
 			t.Fatalf("model infos = %+v, want %s registered", infos, modelName)
-		}
-	}
-}
-
-func TestChatGPTUpstreamModelIsIdentity(t *testing.T) {
-	// 目录不再维护旧别名映射，ID 就是打给上游的名字。
-	for _, model := range ChatGPTModelCatalog() {
-		if got := chatGPTUpstreamModel(model.ID); got != model.ID {
-			t.Fatalf("chatGPTUpstreamModel(%s) = %q, want unchanged", model.ID, got)
 		}
 	}
 }

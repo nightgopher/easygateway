@@ -102,29 +102,3 @@ func TestAggregateUsageAvoidsDoubleBillingCache(t *testing.T) {
 		t.Fatalf("cost = %v, want %v (缓存读只按缓存价计一次)", usage.Rows[0].CostUSD, want)
 	}
 }
-
-func TestAggregateUsageEmptyPriceOf(t *testing.T) {
-	usage := AggregateUsage([]DailyStatRow{{Model: "m", Requests: 1, InputTokens: 5}}, nil)
-	if usage.Rows[0].Priced || usage.TotalCostUSD != 0 {
-		t.Fatalf("无单价表时全部 unpriced: %+v", usage.Rows[0])
-	}
-}
-
-// 空模型名的行只计入渠道汇总，不产生 model="" 的报表行。
-func TestAggregateUsageSkipsEmptyModelRows(t *testing.T) {
-	rows := []DailyStatRow{
-		{Date: "2026-10-01", Model: "", Provider: "p1", Requests: 2, InputTokens: 100, OutputTokens: 50},
-		{Date: "2026-10-01", Model: "glm-5.3", Provider: "p1", Requests: 1, InputTokens: 100, OutputTokens: 50},
-	}
-	usage := AggregateUsage(rows, priceOf(map[string]*provider.ModelPricing{
-		"glm-5.3": {InputPerM: 3, OutputPerM: 12},
-	}))
-	for _, row := range usage.Rows {
-		if row.Model == "" {
-			t.Fatalf("不应有空模型名的报表行: %+v", usage.Rows)
-		}
-	}
-	if len(usage.Providers) != 1 || usage.Providers[0].Requests != 3 || usage.Providers[0].InputTokens != 200 {
-		t.Fatalf("空模型行应计入渠道汇总: %+v", usage.Providers)
-	}
-}

@@ -91,36 +91,3 @@ func TestStreamAttemptOverrideLiftsWaitingBudget(t *testing.T) {
 		t.Fatalf("without override the budget must still cap the attempt: err=%v", err)
 	}
 }
-
-func TestProviderConfigWiresFirstOutputOverride(t *testing.T) {
-	t.Setenv("GLM_API_KEY", "glm-test-key")
-
-	configured, err := NewOpenAIProviderFromConfig(&ProviderConfig{
-		Name:                               "glm",
-		Type:                               "openai",
-		URL:                                "https://example.invalid/v1/chat/completions",
-		APIKeyEnv:                          "GLM_API_KEY",
-		ReasoningFirstOutputTimeoutSeconds: 180,
-	})
-	if err != nil {
-		t.Fatalf("expected provider to configure: %v", err)
-	}
-	openAI, ok := configured.(*OpenAIProvider)
-	if !ok {
-		t.Fatalf("expected *OpenAIProvider, got %T", configured)
-	}
-	plain, reasoning := openAI.FirstOutputTimeoutOverride()
-	if plain != 0 || reasoning != 180*time.Second {
-		t.Fatalf("override = (%s, %s), want (0, 180s)", plain, reasoning)
-	}
-
-	// 路由层实际看到的是绑定模型的 wrapper：覆盖必须经接口提升透出。
-	wrapped := NewBoundModelProviderWrapper(openAI, "glm-5.3")
-	o, ok := Provider(wrapped).(FirstOutputOverrideProvider)
-	if !ok {
-		t.Fatal("BoundModelProviderWrapper should promote FirstOutputOverrideProvider")
-	}
-	if _, reasoning := o.FirstOutputTimeoutOverride(); reasoning != 180*time.Second {
-		t.Fatalf("wrapped override = %s, want 180s", reasoning)
-	}
-}

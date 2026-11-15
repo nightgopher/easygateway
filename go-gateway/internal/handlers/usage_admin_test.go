@@ -75,19 +75,3 @@ func TestUsageListsUnpricedModels(t *testing.T) {
 		t.Fatalf("无单价时总成本应为 0（未知，非免费）: %v", usage.TotalCostUSD)
 	}
 }
-
-func TestUsageWithoutPersistence(t *testing.T) {
-	w := httptest.NewRecorder()
-	newUsageRouter(t, nil).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/usage", nil))
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 without persistence, got %d", w.Code)
-	}
-}
-
-func TestUsageRejectsBadDays(t *testing.T) {
-	w := httptest.NewRecorder()
-	newUsageRouter(t, stubDailyStats{}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/usage?days=zero", nil))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}

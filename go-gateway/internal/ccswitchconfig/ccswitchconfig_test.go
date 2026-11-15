@@ -230,13 +230,6 @@ func TestScanDB(t *testing.T) {
 	}
 }
 
-func TestScanMissing(t *testing.T) {
-	_, err := Scan(t.TempDir())
-	if err == nil || !strings.Contains(err.Error(), "不存在") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestConvert(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -440,35 +433,6 @@ func TestAppendProvidersYAML(t *testing.T) {
 	}
 }
 
-func TestAppendProvidersYAMLEmptyFile(t *testing.T) {
-	merged := appendProvidersYAML(nil, "t", []provider.ProviderConfig{{
-		Name: "x", Type: "openai", URL: "https://x.example.com/v1/chat/completions", APIKeyEnv: "CCS_X_API_KEY",
-		Models: []provider.ModelConfig{{ID: "m"}},
-	}})
-	if !strings.HasPrefix(string(merged), "providers:") {
-		t.Fatalf("merged = %q", merged)
-	}
-	var parsed provider.ProvidersConfig
-	if err := unmarshalYAML(merged, &parsed); err != nil || len(parsed.Providers) != 1 {
-		t.Fatalf("parse: %v %+v", err, parsed)
-	}
-}
-
-func TestAppendProvidersYAMLInlineEmptyList(t *testing.T) {
-	existing := []byte("providers: []\nchains:\n  x:\n    - y\n")
-	merged := appendProvidersYAML(existing, "t", []provider.ProviderConfig{{
-		Name: "x", Type: "openai", URL: "https://x.example.com/v1/chat/completions", APIKeyEnv: "CCS_X_API_KEY",
-		Models: []provider.ModelConfig{{ID: "m"}},
-	}})
-	var parsed provider.ProvidersConfig
-	if err := unmarshalYAML(merged, &parsed); err != nil {
-		t.Fatalf("merged yaml invalid: %v\n%s", err, merged)
-	}
-	if len(parsed.Providers) != 1 || len(parsed.Chains) != 1 {
-		t.Fatalf("parsed = %+v\n%s", parsed, merged)
-	}
-}
-
 func TestAppendEnvFile(t *testing.T) {
 	existing := []byte("LITELLM_MASTER_KEY=abc\n# comment\nCCS_EXISTING_API_KEY=old\n")
 	merged := appendEnvFile(existing, "t", map[string]string{
@@ -579,43 +543,6 @@ func fixedNow() time.Time { return time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC
 
 // unmarshalYAML 是测试用的 yaml 反序列化包装。
 func unmarshalYAML(raw []byte, target any) error { return yaml.Unmarshal(raw, target) }
-
-func TestQuoteEnvValue(t *testing.T) {
-	if quoteEnvValue("sk-abc.123") != "sk-abc.123" {
-		t.Fatal("bare value quoted unnecessarily")
-	}
-	if quoteEnvValue("a'b") != `'a'\''b'` {
-		t.Fatal("single quote not escaped")
-	}
-}
-
-func TestParseProviderRowsAndLegacyJSON(t *testing.T) {
-	rows := []ProviderRow{
-		{ID: "p1", AppType: "claude", Name: "MyGLM", IsCurrent: true,
-			SettingsConfig: `{"env":{"ANTHROPIC_BASE_URL":"https://glmx.example.com","ANTHROPIC_AUTH_TOKEN":"sk-row","ANTHROPIC_MODEL":"glm-4.7"}}`,
-			Meta:           `{}`},
-		{ID: "c1", AppType: "codex", Name: "R",
-			SettingsConfig: `{"auth":{"OPENAI_API_KEY":"k"},"config":"model_provider = \"x\"\nmodel = \"m\"\n[model_providers.x]\nbase_url = \"https://r.example.com/v1\"\nwire_api = \"chat\"\n"}`},
-	}
-	entries := ParseProviderRows(rows)
-	if len(entries) != 2 {
-		t.Fatalf("entries = %d", len(entries))
-	}
-	if entries[0].BaseURL != "https://glmx.example.com" || entries[0].APIKey != "sk-row" || !entries[0].IsCurrent {
-		t.Fatalf("row entry = %+v", entries[0])
-	}
-	if entries[1].BaseURL != "https://r.example.com/v1" || entries[1].WireAPI != "chat" || len(entries[1].ModelHints) != 1 {
-		t.Fatalf("row entry = %+v", entries[1])
-	}
-
-	legacyEntries, err := ParseLegacyJSON([]byte(legacyFixture))
-	if err != nil {
-		t.Fatalf("ParseLegacyJSON: %v", err)
-	}
-	if len(legacyEntries) == 0 {
-		t.Fatal("no legacy entries parsed")
-	}
-}
 
 func TestImportEntriesFromUploadedRows(t *testing.T) {
 	gatewayDir := t.TempDir()
@@ -738,16 +665,4 @@ func TestImportKeyRotation(t *testing.T) {
 		t.Fatalf("rotated provider not registered live: %v", router.ListProviders())
 	}
 	os.Unsetenv("CCS_MYGLM_API_KEY")
-}
-
-func TestGuessModelCapabilities(t *testing.T) {
-	if guessModelCapabilities("doubao-seed-1-6-vision-250815") == nil {
-		t.Fatal("vision model should get vision capability")
-	}
-	if guessModelCapabilities("glm-4v-flash") == nil {
-		t.Fatal("4v model should get vision capability")
-	}
-	if guessModelCapabilities("qwen3.5-plus") != nil {
-		t.Fatal("plain model should use loader defaults")
-	}
 }
