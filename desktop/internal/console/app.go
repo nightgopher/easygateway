@@ -27,6 +27,7 @@ type App struct {
 	loaded                                                                bool
 	dashboard                                                             Dashboard
 	statsHistory                                                          StatsHistory
+	usage                                                                 Usage
 	statsDays                                                             int
 	providers                                                             []Provider
 	channels                                                              []AccountChannel
@@ -268,6 +269,9 @@ func (a *App) reload() {
 			// 历史趋势独立容错：旧版网关没有 /stats/history 时概览其余部分照常。
 			var history StatsHistory
 			historyErr := c.JSON(ctx, "GET", fmt.Sprintf("/stats/history?days=%d", statsDays), nil, &history)
+			// 用量成本独立容错：旧版网关没有用量成本端点时成本指标与明细卡整体隐藏。
+			var usage Usage
+			usageErr := c.JSON(ctx, "GET", "/usage?days=1", nil, &usage)
 			// 迁移引导：网关刚起步（provider 很少）时看看 cc-switch 能不能
 			// 带来存量配置——先问网关主机，再退回本机检测（远程网关场景）。
 			hint := CCSwitchHint{}
@@ -288,6 +292,11 @@ func (a *App) reload() {
 					a.statsHistory = history
 				} else {
 					a.statsHistory = StatsHistory{}
+				}
+				if usageErr == nil {
+					a.usage = usage
+				} else {
+					a.usage = Usage{}
 				}
 				a.dashboard = d
 				a.ccHint = hint
@@ -573,6 +582,7 @@ func (a *App) resetHost() {
 	a.listViews = listViewState{}
 	a.loaded = false
 	a.dashboard = Dashboard{}
+	a.usage = Usage{}
 	a.models = nil
 	a.routes = nil
 	a.providers = nil

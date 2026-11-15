@@ -564,6 +564,10 @@ func (a *App) saveEditor() {
 
 var okGreen = ui.Hex("#21835a")
 
+func formatUSD(v float64) string {
+	return fmt.Sprintf("$%.2f", v)
+}
+
 func formatLatency(ms float64) string {
 	if ms >= 1000 {
 		return fmt.Sprintf("%.1f s", ms/1000)
@@ -641,11 +645,28 @@ func (a *App) overviewView(c *ui.Context) {
 				})
 			})
 		}
-		metrics := []struct{ Title, Value string }{
-			{"今日请求", shortNumber(int64(s.TodayRequests))},
-			{"成功率", fmt.Sprintf("%.1f%%", s.SuccessRate)},
-			{"今日 Tokens", shortNumber(s.TodayTokens)},
-			{"平均延迟", formatLatency(s.AvgLatency)},
+		// 用量成本（/admin/usage）：有数据时追加成本格与输入/输出拆分；
+		// 旧版网关无此端点时保持原四格指标不变。
+		usageLoaded := a.usage.From != ""
+		var inTok, outTok int64
+		for _, r := range a.usage.Rows {
+			inTok += r.InputTokens
+			outTok += r.OutputTokens
+		}
+		metrics := []struct{ Title, Value, Note string }{
+			{Title: "今日请求", Value: shortNumber(int64(s.TodayRequests))},
+			{Title: "成功率", Value: fmt.Sprintf("%.1f%%", s.SuccessRate)},
+			{Title: "今日 Tokens", Value: shortNumber(s.TodayTokens)},
+			{Title: "平均延迟", Value: formatLatency(s.AvgLatency)},
+		}
+		if usageLoaded {
+			costNote := ""
+			if len(a.usage.UnpricedModels) > 0 {
+				costNote = fmt.Sprintf("%d 个模型未配单价", len(a.usage.UnpricedModels))
+			}
+			metrics = append(metrics, struct{ Title, Value, Note string }{
+				Title: "今日成本", Value: formatUSD(a.usage.TotalCostUSD), Note: costNote,
+			})
 		}
 		ui.Row(c).Background(theme.Surface).Radius(12).Border(1, theme.Border).AlignItems(ui.Center).Children(func() {
 			for i, metric := range metrics {
@@ -655,6 +676,9 @@ func (a *App) overviewView(c *ui.Context) {
 				ui.Column(c.Key(metric.Title)).Grow(1).MinWidth(0).Padding(16, 20).Gap(6).Children(func() {
 					ui.Text(c, metric.Title).FontSize(13).TextColor(theme.TextMuted)
 					ui.Text(c, metric.Value).Bold().FontSize(22).SingleLine()
+					if metric.Note != "" {
+						ui.Text(c, metric.Note).FontSize(11).TextColor(theme.TextMuted).SingleLine()
+					}
 				})
 			}
 		})
@@ -718,6 +742,48 @@ func (a *App) overviewView(c *ui.Context) {
 							ui.Text(c, shortNumber(m.TotalTokens)+" tok · "+strconv.Itoa(m.Requests)+" 次").FontSize(12).TextColor(theme.TextMuted)
 						})
 					}
+				}
+			})
+		}
+
+		// 用量成本明细：按「模型 × 渠道」折算；旧版网关无用量成本端点时整卡隐藏。
+		// 未配单价的模型不计成本并单独列出，不按 0 冒充免费。
+		if usageLoaded && (len(a.usage.Rows) > 0 || a.usage.TotalCostUSD > 0) {
+			card(c, func() {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "今日成本 · 按模型 × 渠道").FontSize(16).Bold()
+					muted(c, fmt.Sprintf("%s ~ %s · 入 %s · 出 %s", a.usage.From, a.usage.To, shortNumber(inTok), shortNumber(outTok)))
+					ui.Spacer(c)
+					ui.Text(c, formatUSD(a.usage.TotalCostUSD)).FontSize(16).Bold()
+				})
+				rows := append([]UsageRow(nil), a.usage.Rows...)
+				sort.SliceStable(rows, func(i, j int) bool { return rows[i].CostUSD > rows[j].CostUSD })
+				if len(rows) > 5 {
+					rows = rows[:5]
+				}
+				maxCost := 1e-9
+				for _, r := range rows {
+					if r.CostUSD > maxCost {
+						maxCost = r.CostUSD
+					}
+				}
+				for _, r := range rows {
+					r := r
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, r.Model).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+						if r.Provider != "" {
+							muted(c, r.Provider)
+						}
+						ui.Meter(c, r.CostUSD, 0, maxCost, nil).Label(formatUSD(r.CostUSD)).Grow(1).MinWidth(0)
+						if !r.Priced {
+							ui.Text(c, "未配单价").FontSize(12).TextColor(theme.Danger)
+						}
+					})
+				}
+				if len(a.usage.UnpricedModels) > 0 {
+					ui.Row(c).Gap(8).Children(func() {
+						ui.Text(c, "未配置单价，不计成本并单独列出（不按 0 冒充免费）："+strings.Join(a.usage.UnpricedModels, "、")).FontSize(12).TextColor(theme.Accent).Grow(1)
+					})
 				}
 			})
 		}

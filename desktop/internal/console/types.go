@@ -311,3 +311,25 @@ type ChatModelOption struct {
 	Provider string `json:"provider,omitempty"`
 	Channel  string `json:"channel,omitempty"`
 }
+
+// UsageRow 是区间内一个「模型 × 渠道」组合的用量与成本（/admin/usage）。
+type UsageRow struct {
+	Model        string  `json:"model"`
+	Provider     string  `json:"provider"`
+	Requests     int     `json:"requests"`
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+	// Priced=false 表示该行没有可用单价，CostUSD 为 0 只是「未知」，不是「免费」。
+	Priced bool `json:"priced"`
+}
+
+// Usage 是 GET /admin/usage 的响应体；UnpricedModels 列出未配置单价、
+// 无法折算成本的模型，提示补配 pricing。
+type Usage struct {
+	From           string     `json:"from"`
+	To             string     `json:"to"`
+	Rows           []UsageRow `json:"rows"`
+	TotalCostUSD   float64    `json:"total_cost_usd"`
+	UnpricedModels []string   `json:"unpriced_models,omitempty"`
+}
