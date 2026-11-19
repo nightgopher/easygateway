@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,12 +14,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nightgopher/easygateway/internal/archive"
 	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 type openAIChatCompletionsHandler struct {
 	router   *provider.Router
 	logger   *log.Logger
 	archiver *archive.Archiver
+	// maxBody is the request body ceiling; 0 means DefaultMaxRequestBodyBytes.
+	maxBody int64
 }
 
 type openAIChatCompletionsRequest struct {
@@ -216,11 +218,18 @@ func (h *openAIChatCompletionsHandler) SetArchiver(a *archive.Archiver) {
 	h.archiver = a
 }
 
+// SetMaxRequestBodyBytes overrides the request body ceiling for this endpoint.
+func (h *openAIChatCompletionsHandler) SetMaxRequestBodyBytes(limit int64) {
+	h.maxBody = limit
+}
+
 func (h *openAIChatCompletionsHandler) Handle(c *gin.Context) {
 	c.Request = c.Request.WithContext(h.router.BeginRouting(c.Request.Context()))
-	rawBody, _ := io.ReadAll(c.Request.Body)
+	rawBody, ok := readRequestBody(c, h.maxBody)
+	if !ok {
+		return
+	}
 	logRequestSummary(h.logger, c, "chat.completions", len(rawBody))
-	c.Request.Body = io.NopCloser(bytes.NewReader(rawBody))
 
 	var req openAIChatCompletionsRequest
 	if err := json.Unmarshal(rawBody, &req); err != nil {
@@ -374,18 +383,18 @@ func (h *openAIChatCompletionsHandler) streamFromProvider(c *gin.Context, req *p
 		streamWriter = newTeeStreamWriter(streamWriterBase, sink)
 	}
 	// 流计时由后台 goroutine 经 errCh 的 happens-before 传回，再由请求 goroutine 写入。
+	// safego.GoErr 保证 panic 也总会送达一个 error：否则请求 goroutine 会永远
+	// 等在 <-errCh 上，而 panic 本身还会终止整个进程。
 	var streamTiming provider.StreamTiming
-	errCh := make(chan error, 1)
-	go func() {
-		var err error
+	errCh := safego.GoErr(h.logger, "chat stream "+p.Name(), func() error {
+		defer func() { _ = pw.Close() }()
 		if sp, ok := p.(provider.StreamProvider); ok {
+			var err error
 			streamTiming, err = runGuardedStreamContext(ctx, h.router, req, p, pw, sp.ForwardStream)
-		} else {
-			err = fmt.Errorf("provider %s does not support streaming", p.Name())
+			return err
 		}
-		errCh <- err
-		_ = pw.Close()
-	}()
+		return fmt.Errorf("provider %s does not support streaming", p.Name())
+	})
 
 	if err := anthropicSSEToOpenAISSEWithUsage(pr, streamWriter, c); err != nil {
 		cancel()

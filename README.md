@@ -325,6 +325,8 @@ easygateway/
 | `CIRCUIT_FAILURE_THRESHOLD` | 否 | 连续可重试失败后打开熔断（默认 3） |
 | `CIRCUIT_RECOVERY_SECONDS` | 否 | 熔断恢复探测间隔（默认 30） |
 | `CIRCUIT_SUCCESS_THRESHOLD` | 否 | 半开状态连续成功次数（默认 1） |
+| `MAX_REQUEST_BODY_MB` | 否 | 三个协议入口的请求体上限（默认 64 MiB，超限返回 413） |
+| `TRUSTED_PROXIES` | 否 | 可信反向代理 IP/CIDR（默认空＝不信任任何代理，`X-Forwarded-For` 不被采信） |
 
 ## 资源占用
 

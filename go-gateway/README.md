@@ -585,6 +585,8 @@ Antigravity Provider 为知识飞轮的长请求设置了 900 秒。这个值只
 | `CHATGPT_AUTH_FILE` | 否 | 自动查找 | ChatGPT/Pi OAuth `auth.json` 路径 |
 | `PORT` | 否 | 4001 | 监听端口 |
 | `LOG_LEVEL` | 否 | info | 日志级别 |
+| `MAX_REQUEST_BODY_MB` | 否 | 64 | 三个协议入口的请求体上限（MiB），超限返回 `413 request_too_large` |
+| `TRUSTED_PROXIES` | 否 | 空（不信任任何代理） | 可信反向代理的 IP/CIDR，逗号分隔；决定 `X-Forwarded-For` 是否被采信 |
 | `ADMIN_TOKEN` | 否 | 使用 `EASYGATEWAY_MASTER_KEY` | 管理接口独立认证 token |
 | `CIRCUIT_FAILURE_THRESHOLD` | 否 | 3 | 连续可重试失败后打开熔断 |
 | `CIRCUIT_RECOVERY_SECONDS` | 否 | 30 | 打开后等待半开探测的秒数 |

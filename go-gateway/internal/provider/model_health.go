@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 // ModelHealth distinguishes local readiness from a recent upstream probe.
@@ -178,24 +180,28 @@ func (r *Router) Doctor(ctx context.Context, probeAnonymous bool) (DoctorReport,
 				if ctx.Err() != nil {
 					continue
 				}
-				probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
-				model := t.p.Name()
-				if bound, ok := t.p.(BoundModelProvider); ok {
-					model = bound.BoundModel()
-				}
-				result := probeVia(probeCtx, model, 1, t.p.ForwardRequest)
-				cancel()
-				if ctx.Err() != nil {
-					continue
-				}
-				r.mu.Lock()
-				if r.runtime[t.name] == t.rt && providersEqual(r.providers[t.name], t.p) {
-					t.rt.lastProbe, t.rt.lastProbeAt, t.rt.hasProbe = result, time.Now().UTC(), true
-				}
-				r.mu.Unlock()
-				countMu.Lock()
-				count++
-				countMu.Unlock()
+				// 每个探针独立隔离：probeVia 会解析任意上游响应体，一次
+				// panic 会让这个 worker 直接消失，后续探测结果再也不会写入。
+				safego.Run(r.logger, "probe "+t.name, func() {
+					probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+					defer cancel()
+					model := t.p.Name()
+					if bound, ok := t.p.(BoundModelProvider); ok {
+						model = bound.BoundModel()
+					}
+					result := probeVia(probeCtx, model, 1, t.p.ForwardRequest)
+					if ctx.Err() != nil {
+						return
+					}
+					r.mu.Lock()
+					if r.runtime[t.name] == t.rt && providersEqual(r.providers[t.name], t.p) {
+						t.rt.lastProbe, t.rt.lastProbeAt, t.rt.hasProbe = result, time.Now().UTC(), true
+					}
+					r.mu.Unlock()
+					countMu.Lock()
+					count++
+					countMu.Unlock()
+				})
 			}
 		}()
 	}

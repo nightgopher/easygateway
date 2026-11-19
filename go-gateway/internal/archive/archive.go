@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 // Archiver is the entry point handlers call to persist conversations. It owns
@@ -129,20 +131,27 @@ func (a *Archiver) CleanupRetention() {
 func (a *Archiver) worker() {
 	defer a.wg.Done()
 	for ar := range a.queue {
-		const maxAttempts = 3
-		var err error
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			err = a.store.SaveArchive(ar)
-			if err == nil {
-				break
-			}
-			if attempt < maxAttempts {
-				time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
-			}
+		// Each record is isolated: a panic in one save must not kill the worker
+		// goroutine, which would silently stop all later archival, and must not
+		// reach the runtime either. safego.Run logs and swallows it.
+		safego.Run(a.log, "archive save", func() { a.saveWithRetry(ar) })
+	}
+}
+
+func (a *Archiver) saveWithRetry(ar Archive) {
+	const maxAttempts = 3
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err = a.store.SaveArchive(ar)
+		if err == nil {
+			break
 		}
-		if err != nil {
-			a.log.Printf("archive: save error after %d attempts (request_id=%s): %v", maxAttempts, ar.RequestID, err)
+		if attempt < maxAttempts {
+			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
 		}
+	}
+	if err != nil {
+		a.log.Printf("archive: save error after %d attempts (request_id=%s): %v", maxAttempts, ar.RequestID, err)
 	}
 }
 
