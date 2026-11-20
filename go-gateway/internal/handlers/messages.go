@@ -21,6 +21,8 @@ type MessageHandler struct {
 	router   *provider.Router
 	logger   *log.Logger
 	archiver *archive.Archiver
+	// maxBody is the request body ceiling; 0 means DefaultMaxRequestBodyBytes.
+	maxBody int64
 }
 
 func NewMessageHandler(router *provider.Router, logger *log.Logger) *MessageHandler {
@@ -33,15 +35,22 @@ func (h *MessageHandler) SetArchiver(a *archive.Archiver) {
 	h.archiver = a
 }
 
+// SetMaxRequestBodyBytes overrides the request body ceiling for this endpoint.
+func (h *MessageHandler) SetMaxRequestBodyBytes(limit int64) {
+	h.maxBody = limit
+}
+
 // Handle 处理消息请求，支持流式和非流式
 func (h *MessageHandler) Handle(c *gin.Context) {
 	c.Request = c.Request.WithContext(h.router.BeginRouting(c.Request.Context()))
 	// Read once so BindJSON can validate the same payload without retaining or
 	// logging the full request body (which may contain credentials or Base64).
-	rawBody, _ := io.ReadAll(c.Request.Body)
+	// readRequestBody leaves the body rewound for BindJSON below.
+	rawBody, ok := readRequestBody(c, h.maxBody)
+	if !ok {
+		return
+	}
 	logRequestSummary(h.logger, c, "messages", len(rawBody))
-	// 把 body 放回去供 BindJSON 使用
-	c.Request.Body = io.NopCloser(bytes.NewReader(rawBody))
 
 	var req provider.Request
 	if err := c.BindJSON(&req); err != nil {

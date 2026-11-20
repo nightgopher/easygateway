@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nightgopher/easyagent/sdk/skillmarket"
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 // SkillsInstallJobsHandler 把技能安装做成网关侧任务：提交后立刻返回任务号，
@@ -176,6 +178,20 @@ func (h *SkillsInstallJobsHandler) update(job *installJob, mutate func()) {
 
 // run 在后台执行安装；进度写入任务，结果（done/failed）为终态。
 func (h *SkillsInstallJobsHandler) run(job *installJob) {
+	// A panic here must not escape: the goroutine is detached from any HTTP
+	// recovery, and leaving the job in "resolving" would keep the desktop
+	// polling a task that can never finish. Contain it and publish a terminal
+	// failure instead.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			safego.LogPanic(h.logger, "skill install job "+job.ID, recovered)
+			h.update(job, func() {
+				job.Phase = "failed"
+				job.Error = fmt.Sprintf("安装任务内部错误: %v", recovered)
+				job.FinishedAt = time.Now()
+			})
+		}
+	}()
 	// 独立于请求的 context：任务的生命周期归网关所有，客户端断开不取消。
 	item, err := h.client.InstallWithProgress(context.Background(), job.SkillID, func(p skillmarket.InstallProgress) {
 		h.update(job, func() {

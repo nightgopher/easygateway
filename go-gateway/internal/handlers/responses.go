@@ -290,6 +290,8 @@ type responsesHandler struct {
 	router   *provider.Router
 	logger   *log.Logger
 	archiver *archive.Archiver
+	// maxBody is the request body ceiling; 0 means DefaultMaxRequestBodyBytes.
+	maxBody int64
 }
 
 func NewResponsesHandler(router *provider.Router, logger *log.Logger) *responsesHandler {
@@ -301,12 +303,19 @@ func (h *responsesHandler) SetArchiver(a *archive.Archiver) {
 	h.archiver = a
 }
 
+// SetMaxRequestBodyBytes overrides the request body ceiling for this endpoint.
+func (h *responsesHandler) SetMaxRequestBodyBytes(limit int64) {
+	h.maxBody = limit
+}
+
 // Handle 处理 /v1/responses 端点
 func (h *responsesHandler) Handle(c *gin.Context) {
 	c.Request = c.Request.WithContext(h.router.BeginRouting(c.Request.Context()))
-	rawBody, _ := io.ReadAll(c.Request.Body)
+	rawBody, ok := readRequestBody(c, h.maxBody)
+	if !ok {
+		return
+	}
 	logRequestSummary(h.logger, c, "responses", len(rawBody))
-	c.Request.Body = io.NopCloser(strings.NewReader(string(rawBody)))
 
 	var req responsesRequest
 	if err := json.Unmarshal(rawBody, &req); err != nil {

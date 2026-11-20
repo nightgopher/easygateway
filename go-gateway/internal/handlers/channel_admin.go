@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nightgopher/easygateway/internal/channel"
 	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 // ChannelAdminHandler 暴露账号渠道的登录与账号管理接口。它直接与 internal/channel
@@ -159,8 +161,27 @@ func (h *ChannelAdminHandler) HandleLoginStart(c *gin.Context) {
 	h.mu.Unlock()
 
 	// 后台等待授权：超时略长于设备码有效期，保证轮询到最后一刻。
+	//
+	// 这个 goroutine 的 panic 不能逃逸（否则整个网关退出），但也绝不能让
+	// pending.done 保持未关闭——桌面端正在 HandleLoginPoll 上等待它。因此这里
+	// 本地 recover：把 panic 记成该次登录的终态错误，再统一关闭 done。
 	go func() {
 		defer cancel()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				safego.LogPanic(h.logger, "channel login "+ch.Name(), recovered)
+				pending.err = fmt.Errorf("后台等待授权时发生内部错误: %v", recovered)
+			}
+			close(pending.done)
+			// Retain terminal results briefly for the desktop poll, then release abandoned sessions.
+			time.AfterFunc(time.Minute, func() {
+				h.mu.Lock()
+				if h.pendings[id] == pending {
+					delete(h.pendings, id)
+				}
+				h.mu.Unlock()
+			})
+		}()
 		cred, err := session.Wait(ctx)
 		pending.cred, pending.err = cred, err
 		if err == nil && h.router != nil {
@@ -171,15 +192,6 @@ func (h *ChannelAdminHandler) HandleLoginStart(c *gin.Context) {
 				pending.catalogWarning = "已登录，但模型目录刷新失败；请稍后手动刷新。"
 			}
 		}
-		close(pending.done)
-		// Retain terminal results briefly for the desktop poll, then release abandoned sessions.
-		time.AfterFunc(time.Minute, func() {
-			h.mu.Lock()
-			if h.pendings[id] == pending {
-				delete(h.pendings, id)
-			}
-			h.mu.Unlock()
-		})
 	}()
 
 	response := gin.H{

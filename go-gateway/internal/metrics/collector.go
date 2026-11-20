@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nightgopher/easygateway/internal/requestmeta"
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 // RequestRecord 单条请求记录
@@ -274,21 +275,34 @@ func (c *Collector) Record(r RequestRecord) {
 
 func (c *Collector) saveRecord(store Store, r RequestRecord) {
 	var err error
+	// The bookkeeping below must happen on every path, including a panic from
+	// the store: Close blocks on writesDone, so a write that never decrements
+	// pendingWrites would hang shutdown for the full deadline and lose the
+	// record silently. Containing the panic here keeps one bad write from both
+	// killing the process and wedging the drain.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			safego.LogPanic(nil, "metrics persist", recovered)
+			err = fmt.Errorf("metrics persist panicked: %v", recovered)
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.persistError == nil {
+			c.persistError = err
+		}
+		if c.pendingWrites > 0 {
+			c.pendingWrites--
+			if c.pendingWrites == 0 {
+				close(c.writesDone)
+			}
+		}
+	}()
 	if contextual, ok := store.(interface {
 		SaveRecordContext(context.Context, RequestRecord) error
 	}); ok {
 		err = contextual.SaveRecordContext(c.persistCtx, r)
 	} else {
 		err = store.SaveRecord(r)
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.persistError == nil {
-		c.persistError = err
-	}
-	c.pendingWrites--
-	if c.pendingWrites == 0 {
-		close(c.writesDone)
 	}
 }
 

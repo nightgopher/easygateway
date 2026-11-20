@@ -44,9 +44,16 @@ type Config struct {
 	ModelHealthIntervalSeconds  int
 	ModelHealthProbeAnonymous   bool
 	StatsRetentionDays          int // daily_stats 保留天数（独立于 request_logs）
-	Archive                     archive.Config
-	Memory                      memory.Config
-	Assistant                   assistant.Config
+	// MaxRequestBodyMB caps the three protocol entry points. 0 falls back to
+	// handlers.DefaultMaxRequestBodyBytes so an unset .env keeps the default.
+	MaxRequestBodyMB int
+	// TrustedProxies lists the reverse proxies whose X-Forwarded-For may be
+	// believed. Empty means trust nobody: ClientIP() returns the socket peer,
+	// which is what makes the auth failure limiter and request logs trustworthy.
+	TrustedProxies []string
+	Archive        archive.Config
+	Memory         memory.Config
+	Assistant      assistant.Config
 }
 
 // Load 从环境变量加载配置
@@ -81,6 +88,8 @@ func Load() (*Config, error) {
 		StatsRetentionDays:          getEnvInt("STATS_RETENTION_DAYS", 365),
 		ModelHealthIntervalSeconds:  getEnvInt("MODEL_HEALTH_INTERVAL_SECONDS", 0),
 		ModelHealthProbeAnonymous:   getEnvBool("MODEL_HEALTH_PROBE_ANONYMOUS", false),
+		MaxRequestBodyMB:            getEnvInt("MAX_REQUEST_BODY_MB", 0),
+		TrustedProxies:              getEnvList("TRUSTED_PROXIES"),
 		Archive:                     loadArchiveConfig(),
 		Memory:                      loadMemoryConfig(),
 		Assistant:                   loadAssistantConfig(),

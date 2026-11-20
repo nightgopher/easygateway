@@ -17,6 +17,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nightgopher/easygateway/internal/piconfig"
 	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 func doctorCommand(args []string) error {
@@ -74,7 +75,7 @@ func startModelDoctor(ctx context.Context, r *provider.Router, interval time.Dur
 	if interval <= 0 {
 		return
 	}
-	go func() {
+	safego.Go(logger, "model doctor", func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -82,13 +83,17 @@ func startModelDoctor(ctx context.Context, r *provider.Router, interval time.Dur
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				checkCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-				_, err := r.Doctor(checkCtx, probe)
-				cancel()
-				if err != nil && ctx.Err() == nil {
-					logger.Printf("Model doctor: %v", err)
-				}
+				// 每轮探测各自隔离：探针会解析任意上游响应，一次畸形响应
+				// 不能让这个常驻循环消失。
+				safego.Run(logger, "model doctor probe", func() {
+					checkCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+					defer cancel()
+					_, err := r.Doctor(checkCtx, probe)
+					if err != nil && ctx.Err() == nil {
+						logger.Printf("Model doctor: %v", err)
+					}
+				})
 			}
 		}
-	}()
+	})
 }

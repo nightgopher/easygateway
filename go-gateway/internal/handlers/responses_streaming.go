@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nightgopher/easygateway/internal/archive"
 	"github.com/nightgopher/easygateway/internal/provider"
+	"github.com/nightgopher/easygateway/internal/safego"
 )
 
 // handleStream 处理流式 Responses API 请求
@@ -134,10 +135,11 @@ func (h *responsesHandler) streamFromProvider(c *gin.Context, req *provider.Requ
 	}
 	// 流计时由后台 goroutine 经 errCh 的 happens-before 传回，再由请求 goroutine 写入。
 	var streamTiming provider.StreamTiming
-	errCh := make(chan error, 1)
 
-	go func() {
-		defer pw.Close()
+	// safego.GoErr 保证 panic 也送达一个 error：请求 goroutine 在下面阻塞等
+	// 待，裸 goroutine 的 panic 既会让它永远挂住，又会终止整个进程。
+	errCh := safego.GoErr(h.logger, "responses stream "+p.Name(), func() error {
+		defer func() { _ = pw.Close() }()
 		var err error
 		if sp, ok := p.(provider.StreamProvider); ok {
 			streamTiming, err = runGuardedStreamContext(ctx, h.router, req, p, pw, sp.ForwardStream)
@@ -146,8 +148,8 @@ func (h *responsesHandler) streamFromProvider(c *gin.Context, req *provider.Requ
 				return h.forwardRawStream(ctx, req, p, w)
 			})
 		}
-		errCh <- err
-	}()
+		return err
+	})
 
 	err := anthropicSSEToResponsesSSEWithUsage(pr, streamWriter, model, c)
 	if err != nil {

@@ -34,6 +34,7 @@ import (
 	"github.com/nightgopher/easygateway/internal/piconfig"
 	"github.com/nightgopher/easygateway/internal/provider"
 	"github.com/nightgopher/easygateway/internal/providerpresets"
+	"github.com/nightgopher/easygateway/internal/safego"
 	"github.com/nightgopher/easygateway/internal/selfupdate"
 	"github.com/nightgopher/easygateway/internal/storage"
 )
@@ -103,7 +104,9 @@ func main() {
 		}
 
 		// 启动后台清理任务（每天清理 30 天前的指标数据 + 归档保留期外的对话）
-		go startCleanupTask(shutdownSignals, store, cfg.Archive, cfg.StatsRetentionDays, logger)
+		safego.Go(logger, "cleanup task", func() {
+			startCleanupTask(shutdownSignals, store, cfg.Archive, cfg.StatsRetentionDays, logger)
+		})
 	}
 
 	// 构建归档器（即便 ARCHIVE_ENABLED=false 也是安全的 no-op）
@@ -157,7 +160,7 @@ func main() {
 		logger.Fatalf("Failed to load providers.yaml: %v", err)
 	}
 	watchConfigReload(shutdownSignals, reloader, logger)
-	go easycodeCatalog.run(shutdownSignals)
+	safego.Go(logger, "easycode catalog", func() { easycodeCatalog.run(shutdownSignals) })
 	startModelDoctor(shutdownSignals, router, time.Duration(cfg.ModelHealthIntervalSeconds)*time.Second, cfg.ModelHealthProbeAnonymous, logger)
 
 	// 创建 Gin 引擎
@@ -169,6 +172,22 @@ func main() {
 	engine.UseRawPath = true
 	engine.UnescapePathValues = false
 
+	// Client-IP trust boundary. gin trusts every proxy by default, so
+	// ClientIP() would return a client-supplied X-Forwarded-For value; that
+	// defeats the auth failure limiter and poisons request logs. trust nobody
+	// unless the deployment names its reverse proxy (TRUSTED_PROXIES).
+	if err := middleware.ConfigureTrustedProxies(engine, cfg.TrustedProxies); err != nil {
+		logger.Fatalf("Invalid TRUSTED_PROXIES: %v", err)
+	}
+	if len(cfg.TrustedProxies) == 0 {
+		logger.Printf("Trusted proxies: none (ClientIP uses the socket peer)")
+	} else {
+		logger.Printf("Trusted proxies: %v", cfg.TrustedProxies)
+	}
+
+	// gin.New() has no recovery handler: a panic in any handler would take the
+	// whole gateway down instead of failing one request.
+	engine.Use(middleware.Recovery(logger))
 	engine.Use(corsPolicy.Middleware())
 
 	// gateway key 多密钥体系：发给客户端的受限身份（模型白名单 + token 限额）。
@@ -194,13 +213,24 @@ func main() {
 		c.Next()
 	}
 
+	// 三个协议入口共用一个请求体上限；MAX_REQUEST_BODY_MB 可覆盖。集中在一处
+	// 是为了避免各入口像 passthrough 那样逐渐漂移成不同的值。
+	maxRequestBody := int64(handlers.DefaultMaxRequestBodyBytes)
+	if cfg.MaxRequestBodyMB > 0 {
+		maxRequestBody = int64(cfg.MaxRequestBodyMB) << 20
+	}
+	logger.Printf("Max request body: %d MiB", maxRequestBody>>20)
+
 	// 注册路由
 	msgHandler := handlers.NewMessageHandler(router, logger)
 	msgHandler.SetArchiver(archiver)
+	msgHandler.SetMaxRequestBodyBytes(maxRequestBody)
 	chatHandler := handlers.NewChatCompletionsHandler(router, logger)
 	chatHandler.SetArchiver(archiver)
+	chatHandler.SetMaxRequestBodyBytes(maxRequestBody)
 	responsesHandler := handlers.NewResponsesHandler(router, logger)
 	responsesHandler.SetArchiver(archiver)
+	responsesHandler.SetMaxRequestBodyBytes(maxRequestBody)
 	modelHandler := handlers.NewModelHandler(router, logger)
 	passthroughHandler := handlers.NewPassthroughHandler(router, logger)
 	healthHandler := handlers.NewHealthHandler(router, logger)
@@ -1284,15 +1314,23 @@ func hasProvider(names []string, wanted string) bool {
 
 // startCleanupTask 启动后台清理任务
 func startCleanupTask(ctx context.Context, store *storage.SQLiteStore, archiveCfg archive.Config, statsRetentionDays int, logger *log.Logger) {
+	// runCleanup 的每一步都可能因为数据库状态异常而 panic。它是每天执行一次的
+	// 长驻循环：一次 panic 若逃逸出去，要么终止进程，要么让循环永久消失（保留
+	// 期清理从此不再执行）。因此按轮次隔离，失败只影响当次。
+	runCleanup := func() {
+		safego.Run(logger, "cleanup task", func() {
+			if err := store.Cleanup(30, statsRetentionDays); err != nil {
+				logger.Printf("Cleanup error: %v", err)
+			}
+			if archiveCfg.Enabled && archiveCfg.RetentionDays > 0 {
+				if err := store.CleanupArchives(archiveCfg.RetentionDays); err != nil {
+					logger.Printf("Archive cleanup error: %v", err)
+				}
+			}
+		})
+	}
 	// 首次启动时清理
-	if err := store.Cleanup(30, statsRetentionDays); err != nil {
-		logger.Printf("Cleanup error: %v", err)
-	}
-	if archiveCfg.Enabled && archiveCfg.RetentionDays > 0 {
-		if err := store.CleanupArchives(archiveCfg.RetentionDays); err != nil {
-			logger.Printf("Archive cleanup error: %v", err)
-		}
-	}
+	runCleanup()
 
 	// 每天凌晨 3 点清理
 	for {
@@ -1307,15 +1345,7 @@ func startCleanupTask(ctx context.Context, store *storage.SQLiteStore, archiveCf
 			return
 		case <-timer.C:
 		}
-
-		if err := store.Cleanup(30, statsRetentionDays); err != nil {
-			logger.Printf("Cleanup error: %v", err)
-		}
-		if archiveCfg.Enabled && archiveCfg.RetentionDays > 0 {
-			if err := store.CleanupArchives(archiveCfg.RetentionDays); err != nil {
-				logger.Printf("Archive cleanup error: %v", err)
-			}
-		}
+		runCleanup()
 	}
 }
 

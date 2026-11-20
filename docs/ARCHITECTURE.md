@@ -33,7 +33,8 @@ Admin API 是两者之间唯一的契约边界：网关不感知客户端的存�
 | `provider` | 上游实现；OpenAI 兼容参考 `openai.go`，Anthropic 兼容参考 `anthropic.go` |
 | `handlers` | 三种协议入口、模型目录、路由与 Admin API 的 HTTP 处理器 |
 | `auth` | Bearer 认证；管理接口接受 Admin Token 或 Master Key，普通模型接口不接受独立 Admin Token |
-| `middleware` | request ID、指标采集、请求日志 |
+| `middleware` | request ID、指标采集、请求日志、panic 恢复、客户端 IP 信任边界 |
+| `safego` | 后台 goroutine 的 panic 隔离（日志 + 栈），流式泵与常驻循环统一走这里 |
 | `requestmeta` | 请求关联元数据契约（request ID ↔ 最终 Provider 与每次尝试） |
 | `metrics` | 轻量指标聚合（缓存统计、命中率、Provider 健康） |
 | `storage` | SQLite 持久化（指标、归档、记忆、设置同文件分表） |
@@ -44,6 +45,14 @@ Admin API 是两者之间唯一的契约边界：网关不感知客户端的存�
 | `piconfig` / `zcodeconfig` / `dshconfig` | 把网关模型清单同步进 Pi / ZCode / deepseek-harness 的客户端配置 |
 
 数据红线（AGENTS.md）：Provider API Key 不进响应、日志、Admin API；Authorization、Token、密码永不落库；归档默认脱敏且有保留期。
+
+### 入口边界（panic、客户端 IP、请求体）
+
+三个协议入口共用同一套边界策略，改动时不要只改一处：
+
+- **panic 恢复**：`middleware.Recovery` 兜住 handler 内的 panic；后台 goroutine 用 `safego`（`Go`/`GoErr`/`Run`）兜住，其中流式泵用 `GoErr` 保证 panic 也总会向等待方送出结果，否则请求会永久阻塞。恢复一律记录带 request ID 与调用栈的日志，不静默吞掉。
+- **客户端 IP**：默认 `TRUSTED_PROXIES` 为空即 `SetTrustedProxies(nil)`，`ClientIP()` 取 TCP 对端地址。只有部署在反代后面才配置信任列表，否则认证失败限流（按 IP 计数）与请求日志的来源地址都可被 `X-Forwarded-For` 伪造。通配符（`0.0.0.0/0`、`::/0`）会被拒绝启动。
+- **请求体上限**：三个入口统一走 `handlers.readRequestBody`，默认 64 MiB（`MAX_REQUEST_BODY_MB` 覆盖），超限返回 `413 request_too_large`。`http.Server` 不设 `ReadTimeout`（流式响应需要长连接），因此该上限是慢速/超大请求的唯一防线。
 
 ### 流式与关闭边界
 
