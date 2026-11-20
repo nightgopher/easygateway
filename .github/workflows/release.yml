@@ -360,6 +360,7 @@ jobs:
             release/providers.yaml
             release/default.env.example
             release/install.sh
+            release/AGPL-3.0.txt
             release/*.dmg
             release/gateway-*.tar.gz
             release/update-gateway-*.json
