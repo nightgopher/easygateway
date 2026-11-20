@@ -194,6 +194,7 @@ chmod 0755 "${STAGING}/DEBIAN/postinst" "${STAGING}/DEBIAN/prerm" "${STAGING}/DE
 DOC_DIR="${STAGING}/usr/share/doc/easygateway"
 mkdir -p "${DOC_DIR}"
 cp "${REPO_ROOT}/README.md" "${DOC_DIR}/README.md"
+cp "${REPO_ROOT}/LICENSES/AGPL-3.0.txt" "${DOC_DIR}/AGPL-3.0.txt"
 gzip -9n -c "${REPO_ROOT}/go-gateway/README.md" > "${DOC_DIR}/gateway-README.md.gz"
 cat > "${DOC_DIR}/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
@@ -202,7 +203,10 @@ Source: https://github.com/nightgopher/easygateway
 
 Files: *
 Copyright: 2026 weijian <weijian@example.com>
-License: MIT
+License: AGPL-3.0-only
+ The gateway binary links RelayKit, copyright QuantumNous contributors.
+ See AGPL-3.0.txt and the corresponding source at
+ https://github.com/nightgopher/easygateway/tree/v${VERSION}
 EOF
 gzip -9n > "${DOC_DIR}/changelog.Debian.gz" <<EOF
 easygateway-server (${DEB_VERSION}) unstable; urgency=medium

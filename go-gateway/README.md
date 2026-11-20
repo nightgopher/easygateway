@@ -2,6 +2,8 @@
 
 EasyGateway 的网关运行时：轻量级个人 AI 基础设施网关，用 Go 编写。它统一 OpenAI Chat/Responses 与 Anthropic Messages 入口，按模型能力选择 Provider，并提供 fallback、熔断、指标和管理 API。
 
+OpenAI 上游的非流式和流式响应通过 [RelayKit](https://github.com/QuantumNous/new-api/tree/main/relaykit) 转换为 Anthropic 消息；特殊非流式响应继续使用兼容转换。请求转换仅在结果与现有转换一致时使用 RelayKit，其他情况保留兼容路径。RelayKit 采用 AGPL-3.0，包含它的网关构建遵循该许可，源码和许可证见本仓库及发布版本。
+
 Provider、模型和路由以本目录的 [`providers.yaml`](providers.yaml) 为准；客户端和文档不维护另一份静态模型清单。运行中的实际目录请以 `GET /v1/models` 为准。
 
 ## 快速启动

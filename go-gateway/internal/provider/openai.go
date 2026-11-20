@@ -4,7 +4,6 @@ package provider
 // 用于对接 EasyClaw 等只支持 /v1/chat/completions 的中转服务。
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +11,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 )
 
 // ─── OpenAI 请求/响应结构 ──────────────────────────────────────────────────────
@@ -284,194 +286,8 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *Request, w io.W
 		return NewHTTPError(p.Name(), resp, b)
 	}
 
-	msgID := "msg_oai_" + time.Now().Format("20060102150405")
+	return p.forwardRelayKitStream(streamCtx, cancel, resp.Body, req.Model, w)
 
-	// 统一分配 Anthropic content block 序号：thinking/text/tool_use 按首次出现顺序，
-	// 不透传上游 index（1-based 网关会留空洞）
-	type toolCallState struct {
-		blockIdx int
-		started  bool
-	}
-	toolStates := map[int]*toolCallState{}
-	nextBlockIdx := 0
-	thinkingBlockIdx := -1
-	textBlockIdx := -1
-
-	writeSSE(w, "message_start", fmt.Sprintf(
-		`{"type":"message_start","message":{"id":%q,"type":"message","role":"assistant","model":%q,"content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}`,
-		msgID, req.Model,
-	))
-	writeSSE(w, "ping", `{"type":"ping"}`)
-
-	scanner := bufio.NewScanner(resp.Body)
-	// 增大 scanner buffer，防止超长行截断
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
-
-	idleTimeout := p.requestTimeout()
-	kick, idleTripped := startStreamIdleWatchdog(streamCtx, idleTimeout, cancel)
-
-	finishReason := ""
-	terminal := false
-	var streamUsage *openAIStreamUsage
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		kick()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		payload := strings.TrimPrefix(line, "data: ")
-		if payload == "[DONE]" {
-			terminal = true
-			break
-		}
-		if err := streamPayloadError("", []byte(payload)); err != nil {
-			return err
-		}
-
-		var chunk openAIStreamChunk
-		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-			continue
-		}
-		// --- usage（最后一条 chunk 携带，可能在 choices 为空的独立 chunk 中） ---
-		if chunk.Usage != nil {
-			streamUsage = chunk.Usage
-		}
-		if len(chunk.Choices) == 0 {
-			continue
-		}
-
-		choice := chunk.Choices[0]
-		delta := choice.Delta
-
-		// --- 推理内容（deepseek 系 reasoning_content / OpenRouter reasoning → Anthropic thinking）---
-		reasoning := delta.ReasoningContent
-		if reasoning == "" {
-			reasoning = delta.Reasoning
-		}
-		if reasoning != "" {
-			if thinkingBlockIdx < 0 {
-				thinkingBlockIdx = nextBlockIdx
-				nextBlockIdx++
-				writeSSE(w, "content_block_start", fmt.Sprintf(
-					`{"type":"content_block_start","index":%d,"content_block":{"type":"thinking","thinking":""}}`,
-					thinkingBlockIdx,
-				))
-			}
-			writeSSE(w, "content_block_delta", fmt.Sprintf(
-				`{"type":"content_block_delta","index":%d,"delta":{"type":"thinking_delta","thinking":%s}}`,
-				thinkingBlockIdx, jsonString(reasoning),
-			))
-		}
-
-		// --- 文本内容 ---
-		if delta.Content != "" {
-			if textBlockIdx < 0 {
-				textBlockIdx = nextBlockIdx
-				nextBlockIdx++
-				writeSSE(w, "content_block_start", fmt.Sprintf(
-					`{"type":"content_block_start","index":%d,"content_block":{"type":"text","text":""}}`,
-					textBlockIdx,
-				))
-			}
-			writeSSE(w, "content_block_delta", fmt.Sprintf(
-				`{"type":"content_block_delta","index":%d,"delta":{"type":"text_delta","text":%s}}`,
-				textBlockIdx, jsonString(delta.Content),
-			))
-		}
-
-		// --- 工具调用（实时流式转发）---
-		for _, tc := range delta.ToolCalls {
-			idx := tc.Index
-			state, ok := toolStates[idx]
-			if !ok {
-				bIdx := nextBlockIdx
-				nextBlockIdx++
-				state = &toolCallState{blockIdx: bIdx, started: false}
-				toolStates[idx] = state
-			}
-
-			if !state.started {
-				state.started = true
-				writeSSE(w, "content_block_start", fmt.Sprintf(
-					`{"type":"content_block_start","index":%d,"content_block":{"type":"tool_use","id":%s,"name":%s,"input":{}}}`,
-					state.blockIdx, jsonString(tc.ID), jsonString(tc.Function.Name),
-				))
-			}
-
-			if tc.Function.Arguments != "" {
-				writeSSE(w, "content_block_delta", fmt.Sprintf(
-					`{"type":"content_block_delta","index":%d,"delta":{"type":"input_json_delta","partial_json":%s}}`,
-					state.blockIdx, jsonString(tc.Function.Arguments),
-				))
-			}
-		}
-
-		// --- finish_reason ---
-		if choice.FinishReason != nil && *choice.FinishReason != "" {
-			finishReason = *choice.FinishReason
-			terminal = true
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		if idleTripped() {
-			return fmt.Errorf("upstream stream idle over %v: no data received", idleTimeout)
-		}
-		return err
-	}
-	if !terminal {
-		return incompleteStreamError(p.Name())
-	}
-
-	// 关闭 thinking / 文本 block
-	if thinkingBlockIdx >= 0 {
-		writeSSE(w, "content_block_stop", fmt.Sprintf(`{"type":"content_block_stop","index":%d}`, thinkingBlockIdx))
-	}
-	if textBlockIdx >= 0 {
-		writeSSE(w, "content_block_stop", fmt.Sprintf(`{"type":"content_block_stop","index":%d}`, textBlockIdx))
-	}
-
-	// 关闭工具调用 blocks
-	for _, state := range toolStates {
-		if state.started {
-			writeSSE(w, "content_block_stop", fmt.Sprintf(`{"type":"content_block_stop","index":%d}`, state.blockIdx))
-		}
-	}
-
-	stopReason := mapFinishReason(finishReason)
-
-	// 用上游真实 usage 构造 message_delta（Anthropic SSE 格式）
-	inputTokens := 0
-	outputTokens := 0
-	cacheReadTokens := 0
-	cacheUsageKnown := false
-	if streamUsage != nil {
-		inputTokens = streamUsage.PromptTokens
-		outputTokens = streamUsage.CompletionTokens
-		if streamUsage.PromptTokensDetails != nil && streamUsage.PromptTokensDetails.cacheTokensKnown {
-			cacheReadTokens = streamUsage.PromptTokensDetails.CachedTokens
-			cacheUsageKnown = true
-		}
-	}
-	if cacheUsageKnown {
-		inputTokens -= cacheReadTokens // Anthropic input_tokens excludes cache reads.
-		if inputTokens < 0 {
-			inputTokens = 0
-		}
-		writeSSE(w, "message_delta", fmt.Sprintf(
-			`{"type":"message_delta","delta":{"stop_reason":%q,"stop_sequence":null},"usage":{"input_tokens":%d,"output_tokens":%d,"cache_read_input_tokens":%d}}`,
-			stopReason, inputTokens, outputTokens, cacheReadTokens,
-		))
-	} else {
-		writeSSE(w, "message_delta", fmt.Sprintf(
-			`{"type":"message_delta","delta":{"stop_reason":%q,"stop_sequence":null},"usage":{"input_tokens":%d,"output_tokens":%d}}`,
-			stopReason, inputTokens, outputTokens,
-		))
-	}
-	writeSSE(w, "message_stop", `{"type":"message_stop"}`)
-
-	return nil
 }
 
 // IsHealthy 只反映本地配置：OpenAI 兼容 provider 无法在不发请求的情况下判断
@@ -521,6 +337,14 @@ func thinkingIsDisabled(raw json.RawMessage) bool {
 // ─── 格式转换辅助函数 ──────────────────────────────────────────────────────────
 
 func toOpenAIRequest(req *Request) *openAIRequest {
+	legacy := toOpenAIRequestLegacy(req)
+	if converted, ok := relayKitRequest(req, legacy); ok {
+		return converted
+	}
+	return legacy
+}
+
+func toOpenAIRequestLegacy(req *Request) *openAIRequest {
 	var msgs []openAIMessage
 
 	// 重建 system 消息（toProviderRequest 提取到了 raw["system"]，不在 Messages 里）
@@ -820,6 +644,73 @@ func openAIContentPart(block ContentBlock) json.RawMessage {
 }
 
 func fromOpenAIResponse(oai *openAIResponse) *Response {
+	if converted, ok := relayKitOpenAIResponse(oai); ok {
+		return converted
+	}
+	return fromOpenAIResponseLegacy(oai)
+}
+
+// RelayKit converts the common response shape. Keep the existing converter for
+// inputs whose semantics RelayKit would otherwise change (multiple choices,
+// non-string content or non-object tool arguments).
+func relayKitOpenAIResponse(oai *openAIResponse) (*Response, bool) {
+	if len(oai.Choices) != 1 {
+		return nil, false
+	}
+	choice := oai.Choices[0]
+	if choice.Message.Content != nil {
+		if _, ok := choice.Message.Content.(string); !ok {
+			return nil, false
+		}
+	}
+	for _, call := range choice.Message.ToolCalls {
+		var input map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(call.Function.Arguments), &input); err != nil || input == nil {
+			return nil, false
+		}
+	}
+	data, err := json.Marshal(oai)
+	if err != nil {
+		return nil, false
+	}
+	var source dto.OpenAITextResponse
+	if err := json.Unmarshal(data, &source); err != nil {
+		return nil, false
+	}
+	converted := relayconvert.ResponseOpenAI2Claude(&source, nil)
+	data, err = json.Marshal(converted)
+	if err != nil {
+		return nil, false
+	}
+	var result Response
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, false
+	}
+	for i := range result.Content {
+		result.Content[i].Raw = nil
+	}
+	// Preserve the gateway's accounting contract, including explicitly zero
+	// cached-token counts, independent of RelayKit's usage representation.
+	result.Usage.InputTokens = oai.Usage.PromptTokens
+	result.Usage.OutputTokens = oai.Usage.CompletionTokens
+	if details := oai.Usage.PromptTokensDetails; details != nil && details.cacheTokensKnown {
+		result.CacheReadInputTokens = details.CachedTokens
+		result.CacheInputTokens = oai.Usage.PromptTokens
+		result.CacheUsageKnown = true
+		result.Usage.InputTokens -= details.CachedTokens
+		if result.Usage.InputTokens < 0 {
+			result.Usage.InputTokens = 0
+		}
+	} else {
+		result.CacheReadInputTokens, result.CacheCreationInputTokens, result.CacheInputTokens = 0, 0, 0
+		result.CacheUsageKnown = false
+	}
+	// Unknown finish reasons retain the gateway's established fallback.
+	result.StopReason = mapFinishReason(choice.FinishReason)
+	return &result, true
+}
+
+func fromOpenAIResponseLegacy(oai *openAIResponse) *Response {
 	var blocks []ContentBlock
 	var stopReason string
 
