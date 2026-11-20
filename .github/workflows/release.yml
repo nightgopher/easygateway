@@ -256,6 +256,7 @@ jobs:
           # 复制配置文件
           cp go-gateway/providers.yaml release/
           cp go-gateway/.env.example release/default.env.example
+          cp LICENSES/AGPL-3.0.txt release/AGPL-3.0.txt
           # 复制安装脚本
           cp scripts/install.sh release/
           cp artifacts/desktop-darwin-arm64/*.dmg release/
@@ -265,7 +266,7 @@ jobs:
           cp artifacts/desktop-linux/update-linux-amd64.json release/
           cp artifacts/desktop-linux/update-linux-arm64.json release/
           go run scripts/verify-desktop-update.go desktop/mygo.json release darwin-arm64 linux-amd64 linux-arm64
-          (cd release && sha256sum gateway-* *.deb *.tar.gz *.dmg providers.yaml default.env.example install.* easygateway-desktop-install-*.sh update-*.json > SHA256SUMS)
+          (cd release && sha256sum gateway-* *.deb *.tar.gz *.dmg providers.yaml default.env.example AGPL-3.0.txt install.* easygateway-desktop-install-*.sh update-*.json > SHA256SUMS)
           # 列出文件
           ls -lh release/
 
