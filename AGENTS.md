@@ -8,7 +8,7 @@ EasyGateway 是个人 AI 基础设施，不只是 API 转发器。它为 Claude 
 - OpenAI Chat Completions、Responses、Anthropic Messages 兼容；
 - 模型能力路由、多 Provider fallback、健康检查和熔断；
 - Provider、模型、路由、日志和运行状态管理；
-- 账号渠道：上游账号登录、订阅额度跨客户端复用与授权续期；
+- 账号渠道：仅保留飞书登录 EasyCode（2026-11 已移除其余渠道实现，标准上游与订阅类账号接入由外部工具承接）；
 - 技能中心：custom-skills 清单同步与远端技能市场安装；
 - 记忆层与常驻助理；
 - Go 原生桌面管理端和跨平台部署；

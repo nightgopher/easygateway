@@ -1,13 +1,12 @@
 # EasyGateway
 
-个人 AI 基础设施网关，用 Go 编写：把所有 AI 应用接到一个统一入口，按模型能力调度多个提供商，并提供原生桌面管理端、账号渠道、技能市场、记忆与常驻助理。对外支持 OpenAI Chat Completions、Anthropic Messages、OpenAI Responses API 三套协议，自动 fallback 与熔断恢复。
+个人 AI 基础设施网关，用 Go 编写：把所有 AI 应用接到一个统一入口，按模型能力调度多个提供商，并提供原生桌面管理端、EasyCode 账号渠道、技能市场、记忆与常驻助理。对外支持 OpenAI Chat Completions、Anthropic Messages、OpenAI Responses API 三套协议，自动 fallback 与熔断恢复。
 
 ## 核心功能
 
 - **统一接入**：一个端点、一套密钥接入 Claude Code、Codex CLI、Pi 等所有 AI 应用；三协议兼容，支持流式、工具调用与多模态。
 - **能力调度**：按 text/vision 等能力选模型，多级模型链自动 fallback，健康检查与熔断恢复，请求级追踪与聚合指标。
-- **账号渠道**：桌面端登录上游账号（OAuth/授权码），跨 AI 客户端复用已有订阅额度，支持自动续期与熔断联动；同一渠道多账号在配额耗尽（429）时自动换号重试，全部耗尽才降级。
-- **飞书登录 EasyCode**：在账号渠道用飞书登录，网关会读取该账号可用的 DeepV 模型，并以 `easycode/` 前缀提供给客户端；支持管理远程网关。
+- **账号渠道（EasyCode）**：桌面端飞书登录 EasyCode，网关读取该账号可用的 DeepV 模型并以 `easycode/` 前缀提供给客户端，跨 AI 客户端复用账号额度，支持自动续期与熔断联动、多账号在配额耗尽（429）时自动换号重试；支持从桌面端管理远程网关。minimax/cline 等其余账号渠道已于 2026-11 移除，标准上游与订阅类账号的接入由外部工具（AstrLink）承接。
 - **用量成本**：daily_stats 按 input/output token 拆分落库，`GET /admin/usage` 按「模型 × 渠道」折算美元成本（单价在 providers.yaml 的 pricing 声明），未计价模型明确列出。
 - **多密钥**：gateway key 给每个客户端发独立密钥，支持模型白名单（glob）与按天/周/月的 token 限额，预算耗尽返回 429 与重置时间，Admin API 管理创建/轮换/停用/删除。
 - **快速接入**：`gateway provider add <preset> <key> --models ...` 一条命令接入 deepseek/moonshot/openrouter 等常见供应商（文本级插入 providers.yaml，注释不动，SIGHUP 热重载生效）。
@@ -195,7 +194,7 @@ MY_PROVIDER_API_KEY=sk-xxx
 
 ### GitHub Copilot
 
-通过账号渠道完成授权后，使用网关返回的模型 ID；授权成功与模型调用成功需分别验证。可用模型以运行时目录为准。
+在网关 `.env` 配置 `COPILOT_GITHUB_TOKEN`（网关自动换取约 30 分钟有效的短期 Copilot token），或直接填写 `COPILOT_TOKEN` 后，使用网关返回的模型 ID；授权成功与模型调用成功需分别验证。可用模型以运行时目录为准。
 
 ### 外部提供商
 
@@ -267,7 +266,7 @@ easygateway/
 │   ├── main.go              # 启动入口
 │   ├── internal/
 │   │   ├── provider/        # 提供商、能力路由、熔断与探测
-│   │   ├── channel/         # 账号渠道：登录、账号与续期
+│   │   ├── channel/         # 账号渠道（EasyCode）：登录、账号与续期
 │   │   ├── handlers/        # Admin API 与三协议入口
 │   │   ├── skills/          # 技能清单、同步与技能市场面板
 │   │   ├── memory/          # 个人记忆层

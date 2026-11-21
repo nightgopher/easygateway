@@ -57,7 +57,7 @@ curl http://127.0.0.1:4001/v1/systemone \
 
 `questions` 可同时包含 `noul`、`choice`、`score`。`choice.criteria` 为选项对象，`score.criteria` 为从低到高的等级数组；结构化 state、instructions、criteria 和扩展字段保留给上游。请求最大 4 MiB，响应最大 8 MiB，支持取消；这是一次 JSON 请求，不支持 SSE 文本流。上游 401/403/429 和原生错误类型会保留，`Retry-After` 和上游请求 ID 通过响应头提供。
 
-配置使用 `type: systemone`、完整原生端点 URL、`capabilities: [systemone]`。OpenCode 端点为 `https://opencode.ai/inference/systemone/v1/systemone`；有工作区 Key 时在受保护 `.env` 设置 `OPENCODE_API_KEY`，重启加载。付费档缺 Key 时保留目录但不发请求；免费档 `allow_no_key: true` 允许匿名额度，额度失败不会触发付费回退。它与 OpenCode 渠道设备码登录相互独立。
+配置使用 `type: systemone`、完整原生端点 URL、`capabilities: [systemone]`。OpenCode 端点为 `https://opencode.ai/inference/systemone/v1/systemone`；有工作区 Key 时在受保护 `.env` 设置 `OPENCODE_API_KEY`，重启加载。付费档缺 Key 时保留目录但不发请求；免费档 `allow_no_key: true` 允许匿名额度，额度失败不会触发付费回退。它与 OpenCode 官方客户端的登录态相互独立。
 
 默认模型 doctor 仅报告配置状态，不调用 System One；管理员明确选择某个 Provider 探活时才发送原生最小判断请求。成功响应、协议测试成功和真实上游额度错误应分别记录，模型出现在目录中不代表推理已通过。
 
@@ -65,7 +65,9 @@ curl http://127.0.0.1:4001/v1/systemone \
 
 ## 账号渠道登录
 
-在原生桌面端的「账号渠道」中发起登录，由浏览器完成授权。账号令牌保存在网关主机的受保护凭据目录，桌面端不接收令牌明文。渠道是否需要额外客户端配置、是否支持匿名模型以及本机回调要求以 `GET /admin/channels` 返回值为准；缺少配置时按桌面端说明补齐并重启网关。
+网关内置的账号渠道当前只有 EasyCode（飞书登录）：在原生桌面端的「账号渠道」中发起登录，由浏览器完成授权。账号令牌保存在网关主机的受保护凭据目录，桌面端不接收令牌明文。登录前提以 `GET /admin/channels` 返回值为准。
+
+minimax/cline/lobster/gemini/codebuddy/workbuddy/trae/loomy/raccoon/opencode 十个渠道已于 2026-11 移除（本机均无登录凭据、近 30 天零流量），标准上游与订阅类账号的接入由外部工具（AstrLink）承接。需要恢复某个渠道时，从 Git 历史（2026-11-20 之前的 main）找回对应渠道实现与 `type: channel` 写法。
 
 EasyCode 渠道使用飞书登录，支持从桌面端管理远程网关：飞书回调落在桌面端的本机回环地址，授权码经现有管理连接交给网关换取令牌。登录后会按当前账号读取模型目录，以 `easycode/<上游模型名>` 注册可用模型和对应能力；启动后、登录后及此后每 5 分钟刷新，也可在桌面端手动刷新。使用该账号的额度和上游权限，账号退出后相应动态模型移出目录。飞书登录渠道不需要设置 `DEEPV_ENABLED`，也不读取或覆盖其他 EasyCode 客户端的凭据。
 
@@ -76,8 +78,6 @@ EasyCode 渠道使用飞书登录，支持从桌面端管理远程网关：飞�
 账号授权成功不代表上游模型有额度或可用，仍需实际调用验证。成功授权会重置该渠道对应 Provider 的熔断与历史探测状态，避免之前的缺少凭据错误阻止新账号调用。
 
 一个渠道可登录多个账号（重复登录即可追加）。请求收到 429 配额限制时，网关先在该渠道内自动切换到下一个未耗尽的账号并重试一次；全部账号都在冷却时才打开 Provider 级 429 熔断、走链上下一个 Provider。账号冷却优先采用上游 `Retry-After`（秒数或 HTTP 日期，截断到 1 秒至 24 小时），缺失时默认 5 分钟；冷却状态保存在内存中，重启后清零。`GET /admin/channels` 的账号摘要为每个账号提供 `rate_limited_until`，桌面端据此展示各账号的额度窗口。
-
-TRAE 渠道在 macOS 上可自动识别 `/Applications` 或 `~/Applications` 下已安装的 TRAE CN 客户端，读取安装包 `product.json` 中的客户端标识与版本，无需手动填写额外标识。非标准路径可用 `TRAE_CHANNEL_CLIENT_PRODUCT` 指定该文件；环境变量与 `trae-client.json` 仍优先。此识别不导入 IDE 的账号令牌，仍由用户在浏览器中为网关完成授权。国际版配置不会用于国内渠道。
 
 这些接口使用管理凭据鉴权：
 
@@ -288,15 +288,15 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 
 ### 免费渠道维护与每日同步
 
-匿名免费渠道（Kilo 公共免费池等）的模型清单与额度由上游单方面决定，随时可能下线、改名或限流。`scripts/sync-free-channels.sh` 每日比对上游实时清单，对网关配置做窄范围修补：
+匿名免费档的模型清单与额度由上游单方面决定，随时可能下线、改名或限流。`scripts/sync-free-channels.sh` 每日比对上游实时清单，对网关配置做窄范围修补：
 
-- **数据源**：OpenCode 公共车道 `GET /inference/v1/models`（`Authorization: Bearer public`，实时清单）、Kilo `GET /api/gateway/models` 的免费档集合、dsh-our-free-model 的 `registry.json`（仅作上下文参考，其登记项本身可能过期，以实时探测为准）；
-- **自动应用范围**：只修剪 `kilo` 这类 `allow_no_key` Provider 中已从上游免费清单消失的模型（文本级手术，注释与键序保留），改前备份、经真实加载器校验、热重载、失败回滚；上游新增的免费模型不自动加入，避免无关模型回流；
+- **数据源**：OpenCode 公共车道 `GET /inference/v1/models`（`Authorization: Bearer public`，实时清单）与 dsh-our-free-model 的 `registry.json`（仅作上下文参考，其登记项本身可能过期，以实时探测为准）；
+- **自动应用范围**：只修剪免费 `allow_no_key` Provider 中已从上游免费清单消失的模型（文本级手术，注释与键序保留），改前备份、经真实加载器校验、热重载、失败回滚；上游新增的免费模型不自动加入，避免无关模型回流。kilo 免费池已于 2026-11-20 从 `providers.yaml` 移除（其针对 kilo 的修剪逻辑随之闲置），当前目录中的 `opencode-systemone-free` 仅做探测跟踪；
 - **OpenCode 匿名车道**：`deepseek-v4.1-flash-free`、`glm-5.3-flash-free` 等模型对匿名请求有免费额度，但额度按出口 IP 结算，且上游校验官方客户端请求形态（工具名改写、官方工具表与系统提示，见下文「助理模型目录与 OpenCode 限制」），网关不直接接入；脚本每日探测并在报告中跟踪其可用性；
 - **报告**：每次运行输出对比与探活结果，并追加到 `~/Library/Logs/easygateway-free-sync.log`；
 - 用法：`scripts/sync-free-channels.sh [-endpoint URL] [-config PATH] [--dry-run] [--report-only]`。
 
-deepseek 与 glm-5.3-flash 的稳定供给不依赖免费渠道：glm 走智谱 keyed；deepseek 由代码注册的 DeepV 集成（`deepseek-flash`）与硅基流动 keyed（`siliconflow-chat`）双路供给，kilo 免费池只作链尾兜底。
+deepseek 与 glm-5.3-flash 的稳定供给不依赖免费渠道：glm 走智谱 keyed；deepseek 由代码注册的 DeepV 集成（`deepseek-flash`）供给。硅基流动付费 DeepSeek 档与 kilo 免费池均已移除（2026-11-20，避免消耗个人 key 额度）。
 
 ### Gateway Key 多密钥
 
@@ -845,7 +845,7 @@ DeepV 的 `claude-haiku-5-5` 不接受 `temperature`；网关转换该模型请�
 
 `GET /admin/assistant/models` 每次读取当前路由目录，渠道登录、退出或 Provider 启停后无需重启网关。`models` 保持模型 ID 数组，同时新增 `model_options`（`id`、`provider`、`channel`）供客户端搜索模型或渠道名；多渠道 fallback 不强行标成单个渠道。默认模型仍由 `ASSISTANT_MODEL` 决定，但未登录或已停用时不再列为可选模型。
 
-OpenCode 免费档仅允许官方 OpenCode 客户端使用，上游登录不能解除此限制，见 [维护者说明](https://github.com/anomalyco/opencode/issues/49588)。OpenCode 渠道的免费模型条目已从 `providers.yaml` 移除（登录车道 `/zen/v1` 已于 2026-10-14 迁移至 `/inference/v1`，旧目录中的免费模型全部失效）；匿名公共车道的可用性由 `scripts/sync-free-channels.sh` 每日探测跟踪（见「免费渠道维护与每日同步」）。付费模型需在 `providers.yaml` 中添加并获得对应授权。转换器只保留调用方真实工具，不再补不能执行的 bash/read 占位工具。助理继续通过网关自身的 OpenAI 端点调用，保留渠道鉴权、路由、指标与 fallback。
+OpenCode 免费档仅允许官方 OpenCode 客户端使用，见 [维护者说明](https://github.com/anomalyco/opencode/issues/49588)，因此网关不直接接入其免费车道。OpenCode 渠道已于 2026-11 随账号渠道收缩移除；付费模型需在 `providers.yaml` 中添加并获得对应授权（`OPENCODE_API_KEY`）。匿名公共车道（`/inference/v1`）的可用性由 `scripts/sync-free-channels.sh` 每日探测跟踪（见「免费渠道维护与每日同步」）。转换器只保留调用方真实工具，不再补不能执行的 bash/read 占位工具。助理继续通过网关自身的 OpenAI 端点调用，保留渠道鉴权、路由、指标与 fallback。
 
 ### 配置预检与热加载
 
