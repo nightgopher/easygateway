@@ -202,6 +202,20 @@ func BuildStatus(repo string, m Manifest) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
+	// 状态读取对过期启用项降级：registry 中已不存在的 ID 视为未启用，
+	// 不让一条历史遗留数据把整个技能面板打成 500。写入路径（SaveManifest
+	// 与 Apply）仍严格校验，下次保存会自然清掉这些条目。
+	known := make(map[string]bool, len(registry))
+	for _, skill := range registry {
+		known[skill.ID] = true
+	}
+	enabledIDs := make([]string, 0, len(m.Enabled))
+	for _, id := range m.Enabled {
+		if known[id] {
+			enabledIDs = append(enabledIDs, id)
+		}
+	}
+	m.Enabled = enabledIDs
 	if err := validateManifest(m, registry); err != nil {
 		return Status{}, err
 	}
