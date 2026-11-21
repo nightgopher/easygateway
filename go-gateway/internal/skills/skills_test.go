@@ -209,3 +209,27 @@ func TestLinkOwnedByRepoRejectsForeignPaths(t *testing.T) {
 		t.Fatal("前缀目录不应误判")
 	}
 }
+
+// TestBuildStatusToleratesStaleEnabledIDs 验证启用清单引用 registry 已不存在的
+// 技能时，状态读取降级为「未启用」而不是报错——技能面板不能被一条历史遗留
+// 数据打成 500。
+func TestBuildStatusToleratesStaleEnabledIDs(t *testing.T) {
+	repo := newTestRepo(t)
+	manifest := Manifest{Version: 1, Targets: []string{"~/x"}, Enabled: []string{"alpha", "ghost"}}
+	st, err := BuildStatus(repo, manifest)
+	if err != nil {
+		t.Fatalf("过期启用项不应让 BuildStatus 失败: %v", err)
+	}
+	if len(st.Enabled) != 1 || st.Enabled[0] != "alpha" {
+		t.Fatalf("过期启用项应被过滤，保留有效项: %+v", st.Enabled)
+	}
+}
+
+// TestSaveManifestStillRejectsUnknownSkill 确认降级只发生在读路径，写入仍严格。
+func TestSaveManifestStillRejectsUnknownSkill(t *testing.T) {
+	repo := newTestRepo(t)
+	err := SaveManifest(repo, Manifest{Version: 1, Targets: []string{"~/x"}, Enabled: []string{"ghost"}})
+	if err == nil {
+		t.Fatal("写入路径应继续拒绝目录外技能")
+	}
+}
