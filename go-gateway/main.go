@@ -127,7 +127,7 @@ func main() {
 	// 账号渠道（第二类）：交互式登录取得凭据的渠道。必须先于 providers.yaml
 	// 装载注册工厂，因为 type: channel 的条目在装载时就要构造 provider 实例。
 	channelRegistry := channel.NewRegistry()
-	easycodeChannel := setupChannelProviders(router, channelRegistry, logger)
+	easycodeChannel := setupChannelProviders(channelRegistry, logger)
 
 	// Environment-backed integrations share their existing clients across reloads.
 	nativeProviders := provider.NewRouter(logger)

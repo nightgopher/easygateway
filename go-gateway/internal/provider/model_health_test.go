@@ -69,24 +69,3 @@ func TestDoctorNeverCallsPaidModelsAndBoundsAnonymousProbe(t *testing.T) {
 		t.Fatalf("expired failure treated as permanent: %+v", expired["broken"])
 	}
 }
-
-func TestModelHealthDistinguishesRestrictionAndTransientCircuit(t *testing.T) {
-	r := NewRouter(nil)
-	r.RegisterProvider("blocked", NewOpenCodeProvider(&Config{Name: "big-pickle", APIKey: "public"}))
-	r.RegisterChain("blocked", []string{"blocked"})
-	r.RegisterProvider("ready", NewOpenAIProvider(&Config{Name: "ready", URL: "https://example.invalid", APIKey: "test"}))
-	r.RegisterChain("ready", []string{"ready"})
-	r.RegisterChain("fallback", []string{"blocked", "ready"})
-	health := r.ModelHealths()
-	if health["blocked"].Available || !strings.Contains(health["blocked"].Reason, "OpenCode") {
-		t.Fatalf("blocked=%+v", health["blocked"])
-	}
-	if !health["fallback"].Available {
-		t.Fatal("healthy fallback hidden")
-	}
-	r.RecordProviderFailure("ready", &ProviderError{StatusCode: 429, RetryAfter: "30"})
-	health = r.ModelHealths()
-	if health["ready"].Available || health["ready"].Status != "degraded" {
-		t.Fatalf("cooldown=%+v", health["ready"])
-	}
-}

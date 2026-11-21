@@ -11,26 +11,35 @@ import (
 	"time"
 )
 
+// registryStub 是注册表测试用的最小渠道实现。
+type registryStub struct{ name string }
+
+func (s registryStub) Name() string        { return s.name }
+func (s registryStub) Accounts() *Accounts { return nil }
+func (s registryStub) BeginLogin(context.Context) (LoginSession, error) {
+	return nil, errors.New("not implemented")
+}
+
 // TestRegistryOrderAndGet 验证登记顺序稳定、同名覆盖不重复、未注册返回 false。
 func TestRegistryOrderAndGet(t *testing.T) {
 	reg := NewRegistry()
-	a := NewMiniMaxChannel(t.TempDir())
-	b := NewClineChannel(t.TempDir())
+	a := registryStub{name: "alpha"}
+	b := registryStub{name: "beta"}
 
 	reg.Register(a)
 	reg.Register(b)
 	// 同名再登记应覆盖实例但不改变顺序。
-	reg.Register(NewMiniMaxChannel(t.TempDir()))
+	reg.Register(registryStub{name: "alpha"})
 
 	if reg.Len() != 2 {
 		t.Fatalf("渠道数应为 2，得到 %d", reg.Len())
 	}
 	names := reg.Names()
-	if len(names) != 2 || names[0] != miniMaxChannel || names[1] != clineChannel {
+	if len(names) != 2 || names[0] != "alpha" || names[1] != "beta" {
 		t.Fatalf("登记顺序错误: %v", names)
 	}
-	if _, ok := reg.Get(miniMaxChannel); !ok {
-		t.Fatalf("应能取到 minimax")
+	if _, ok := reg.Get("alpha"); !ok {
+		t.Fatalf("应能取到 alpha")
 	}
 	if _, ok := reg.Get("nope"); ok {
 		t.Fatalf("未注册渠道不应命中")
