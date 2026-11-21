@@ -34,25 +34,6 @@ func TestProvidersRejectStreamEOFWithoutTerminal(t *testing.T) {
 			t.Fatalf("err=%v, output=%s", err, out.String())
 		}
 	})
-	t.Run("cloudcode", func(t *testing.T) {
-		server := cloudCodeFakeServer(t, "fixture", []string{`{"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}}`}, nil, nil)
-		defer server.Close()
-		var out strings.Builder
-		req := mustRequest(t, `{"model":"cloudcode/gemini-3.8-flash","messages":[{"role":"user","content":"hi"}]}`)
-		err := cloudCodeProviderForTest(t, server.URL, req.Model, "fixture").ForwardStream(context.Background(), req, &out)
-		if err == nil || !strings.Contains(out.String(), "partial") || strings.Contains(out.String(), `"type":"message_stop"`) {
-			t.Fatalf("err=%v, output=%s", err, out.String())
-		}
-	})
-	t.Run("trae", func(t *testing.T) {
-		server := traeFakeServer(t, []string{traeFrame("output", `{"response":"partial"}`)}, nil, nil)
-		var out strings.Builder
-		req := mustRequest(t, `{"model":"trae/glm-5.2","messages":[{"role":"user","content":"hi"}]}`)
-		err := traeProviderForTest(t, server.URL, req.Model, NewStaticAuth("fixture")).ForwardStream(context.Background(), req, &out)
-		if err == nil || !strings.Contains(out.String(), "partial") || strings.Contains(out.String(), `"type":"message_stop"`) {
-			t.Fatalf("err=%v, output=%s", err, out.String())
-		}
-	})
 }
 
 type streamFixtureTransport struct{ body string }
@@ -140,20 +121,6 @@ func TestConvertersRejectUpstreamErrorBeforeDone(t *testing.T) {
 		var out strings.Builder
 		body := `data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}` + "\n\n" + errorFrame + "data: [DONE]\n\n"
 		if err := p.convertStream(strings.NewReader(body), &out, "mock"); err == nil || strings.Contains(out.String(), `"type":"message_stop"`) {
-			t.Fatalf("err=%v, output=%s", err, out.String())
-		}
-	})
-	t.Run("cloudcode", func(t *testing.T) {
-		server := cloudCodeFakeServer(t, "fixture", []string{
-			`{"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}}`,
-			`{"response":{"error":{"code":500,"message":"fixture upstream failed"}}}`,
-			`[DONE]`,
-		}, nil, nil)
-		defer server.Close()
-		var out strings.Builder
-		req := mustRequest(t, `{"model":"cloudcode/gemini-3.8-flash","messages":[{"role":"user","content":"hi"}]}`)
-		err := cloudCodeProviderForTest(t, server.URL, req.Model, "fixture").ForwardStream(context.Background(), req, &out)
-		if err == nil || !strings.Contains(out.String(), "partial") || strings.Contains(out.String(), `"type":"message_stop"`) {
 			t.Fatalf("err=%v, output=%s", err, out.String())
 		}
 	})

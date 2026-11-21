@@ -96,7 +96,7 @@ func (a *Accounts) BearerToken() string {
 // CurrentExtra 返回当前账号的附加字段（uid / machine_id 等）。返回的是副本，
 // 调用方可以安全长期持有。未登录时返回 nil。
 //
-// 这是 trae 这类「请求头需要账号级身份字段」的渠道的扩展点：provider 只认
+// 这是「请求头需要账号级身份字段」类渠道的扩展点：provider 只认
 // AuthSource，拿不到 Credential，故由渠道侧在此暴露。
 func (a *Accounts) CurrentExtra() map[string]string {
 	a.mu.RLock()

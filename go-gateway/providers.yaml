@@ -129,43 +129,15 @@ providers:
       - id: XingChenAGI/XingChenASR-Diarize-V3.0
         capabilities: [audio_transcription]
         description: "多人会议档；响应含 segments 说话人分段与时间戳"
-  # 硅基流动 chat：DeepSeek V4.1 Flash 走硅基流动 keyed 渠道，是 coding 链里
-  # deepseek 档的稳定供给。openai 类型 provider 的 url 就是 chat POST 端点，
-  # 与上面 siliconflow（embeddings/转写透传用裸源站）分开注册，互不影响。
-  # 2026-11-03 实测真实对话可用。
-  - name: siliconflow-chat
-    type: openai
-    url: https://api.siliconflow.cn/v1/chat/completions
-    api_key_env: SILICONFLOW_API_KEY
-    models:
-      - id: deepseek-ai/DeepSeek-V4.1-Flash
-        capabilities: [text, tool_calling, streaming, reasoning]
-        description: "DeepSeek V4.1 Flash（硅基流动 keyed），coding 链 deepseek 档"
+  # 账号渠道已收缩为 easycode（飞书登录，渠道实现保留）。minimax/cline/lobster/
+  # gemini/codebuddy/workbuddy/trae/loomy/raccoon/opencode 十个渠道连同登录实现
+  # 已于 2026-11 移除（本机均无登录凭据、近 30 天零流量），标准上游与订阅类账号
+  # 的接入由外部工具（AstrLink）承接；需要恢复时从 Git 历史找回渠道实现与
+  # type: channel 写法（本文件 2026-11-20 之前的版本有完整示例）。
 
-  # 账号渠道（minimax/cline/lobster/gemini/codebuddy/workbuddy/trae/loomy/
-  # raccoon/opencode）暂未使用（本机无登录凭据），provider 条目已移除以精简
-  # 模型目录。渠道登录实现仍在网关内（Admin API /admin/channels 可用），
-  # 需要时把对应 type: channel 的 provider 条目加回来，历史写法见 Git 历史。
-
-  # Kilo AI 公共网关免费池：无需 Key（allow_no_key）。上游会记录 prompt 并用于改进服务，
-  # 请勿经此 Provider 发送敏感内容；模型清单与额度由上游决定。
   # 清单只保留经真实请求验证的模型；失效条目由 scripts/sync-free-channels.sh
   # 每日比对上游免费清单后修剪，新增不自动跟进（避免无关模型回流）。
   # Jev 结构化判断走 systemone 端点，见下方 opencode-systemone-free。
-  - name: kilo
-    type: openai
-    url: https://api.kilo.ai/api/gateway/chat/completions
-    api_key_env: KILO_API_KEY
-    allow_no_key: true
-    models:
-      # 自动路由档：上游在免费池内自选可用模型（2026-11-03 实测匿名可用）
-      - id: kilo-auto/free
-        capabilities: [text, tool_calling, streaming]
-      # 大参数免费档（550B MoE，2026-11-03 实测匿名可用）
-      - id: nvidia/nemotron-3-ultra-550b-a55b:free
-        capabilities: [text, tool_calling, streaming]
-  # Jev uses System One state/questions and JSON answers, not chat/completions.
-  # https://opencode.ai/v2/docs/console/models/#jev
   - name: opencode-systemone-free
     type: systemone
     url: https://opencode.ai/inference/systemone/v1/systemone
@@ -183,13 +155,11 @@ chains:
   # 上游 5xx）都自动降级到下一档，客户端始终只调用这个名字。
   # deepseek 与 glm-5.3-flash 的稳定供给分层：deepseek-flash / deepv-glm-5.3-flash
   # 是代码注册的 DeepV 集成实例（不在 providers.yaml，2026-11-03 实测可用）；
-  # deepseek-ai/DeepSeek-V4.1-Flash 走硅基流动 keyed，是 DeepV 不可用时的稳定兜底；
-  # glm-5.3(-flash) 走智谱 keyed；kilo-auto/free 是匿名免费兜底。
+  # glm-5.3(-flash) 走智谱 keyed。硅基流动付费 DeepSeek 档已于 2026-11-20 移除
+  # （避免消耗个人 key 额度）。
   coding:
     - glm-5.3
     - glm-5.3-flash
     - deepseek-flash
-    - deepseek-ai/DeepSeek-V4.1-Flash
     - deepv-glm-5.3-flash
     - gemini-3.8-flash-high
-    - kilo-auto/free

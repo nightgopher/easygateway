@@ -68,7 +68,7 @@ func TestAssistantCatalogTracksChannelLoginAndDisable(t *testing.T) {
 	auth := &catalogAuth{}
 	r := provider.NewRouter(log.New(io.Discard, "", 0))
 	r.RegisterProvider("bound", provider.NewOpenAIProvider(&provider.Config{Name: "bound", Auth: auth}))
-	r.SetProviderChannel("bound", "cline")
+	r.SetProviderChannel("bound", "easycode")
 	r.RegisterChain("mimo-model", []string{"bound"})
 	r.RegisterModel(provider.ModelInfo{ID: "mimo-model", Provider: "bound", Capabilities: []string{"text"}})
 	if len(assistantChatModelOptions(r)) != 0 {
@@ -76,7 +76,7 @@ func TestAssistantCatalogTracksChannelLoginAndDisable(t *testing.T) {
 	}
 	auth.token = "test-key"
 	got := assistantChatModelOptions(r)
-	if len(got) != 1 || got[0].Channel != "cline" {
+	if len(got) != 1 || got[0].Channel != "easycode" {
 		t.Fatal(got)
 	}
 	r.SetProviderEnabled("bound", false)

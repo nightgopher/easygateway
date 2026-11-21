@@ -72,7 +72,7 @@ func ValidateProvidersConfig(cfg *ProvidersConfig, opts ValidationOptions) Confi
 		instances[name] = true
 	}
 	usedInstances := map[string]bool{}
-	channels := map[string]bool{"minimax": true, "cline": true, "lobster": true, "gemini": true, "codebuddy": true, "workbuddy": true, "trae": true, "loomy": true, "raccoon": true, "opencode": true}
+	channels := map[string]bool{"easycode": true}
 	capabilities := map[string]bool{"text": true, "vision": true, "video": true, "file": true, "audio": true, "tool_calling": true, "streaming": true, "reasoning": true, "embedding": true, "audio_transcription": true, "systemone": true}
 	modalities := map[string]bool{"text": true, "image": true, "video": true, "file": true, "audio": true}
 	for i, p := range cfg.Providers {

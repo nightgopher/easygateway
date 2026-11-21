@@ -34,8 +34,11 @@ OPENCODE_MODELS_URL="${OPENCODE_MODELS_URL:-https://opencode.ai/inference/v1/mod
 KILO_MODELS_URL="${KILO_MODELS_URL:-https://api.kilo.ai/api/gateway/models}"
 DSH_REGISTRY_URL="${DSH_REGISTRY_URL:-https://raw.githubusercontent.com/Ebony-Vinyl/dsh-our-free-model/main/src/providers/registry.json}"
 DSH_REGISTRY_FALLBACK_URL="https://cdn.jsdelivr.net/gh/Ebony-Vinyl/dsh-our-free-model@main/src/providers/registry.json"
-# 探活目标：coding 链的稳定供给（keyed 与 DeepV 代码集成）+ 匿名免费兜底
-PROBE_MODELS=("glm-5.3-flash" "deepseek-flash" "deepseek-ai/DeepSeek-V4.1-Flash" "kilo-auto/free")
+# 探活目标：coding 链的稳定供给（keyed 与 DeepV 代码集成）
+# 注意：不含 deepseek-ai/DeepSeek-V4.1-Flash——硅基流动付费模型已按用户要求
+# 于 2026-11-04 从网关移除（避免消耗个人 key 额度），链内与探活均不再登记。
+# kilo 免费池已于 2026-11-20 从 providers.yaml 移除，不再参与探活。
+PROBE_MODELS=("glm-5.3-flash" "deepseek-flash" "deepseek-v4.1-flash")
 OPENCODE_PROBE_MODEL="deepseek-v4.1-flash-free"
 BACKUP_KEEP=5
 CURL_TIMEOUT=30
