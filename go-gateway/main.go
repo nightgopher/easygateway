@@ -36,6 +36,7 @@ import (
 	"github.com/nightgopher/easygateway/internal/providerpresets"
 	"github.com/nightgopher/easygateway/internal/safego"
 	"github.com/nightgopher/easygateway/internal/selfupdate"
+	"github.com/nightgopher/easygateway/internal/skills"
 	"github.com/nightgopher/easygateway/internal/storage"
 )
 
@@ -244,6 +245,10 @@ func main() {
 	memoryAdminHandler := handlers.NewMemoryAdminHandler(memoryStore, logger)
 	memoryHandler := handlers.NewMemoryHandler(memoryStore, logger)
 	skillsHandler := handlers.NewSkillsHandler(skillsRepoPath(), logger)
+	if p := skillsManifestPath(); p != "" {
+		skills.SetManifestOverride(p)
+		logger.Printf("Skills manifest override: %s", p)
+	}
 	skillsMarketHandler := handlers.NewSkillsMarketHandler(skillsMarketSkillsDir(), os.Getenv("SKILLS_MARKET_BASE_URL"), skillsMarketEnabled(), logger)
 	skillsInstallJobsHandler := handlers.NewSkillsInstallJobsHandler(skillsMarketHandler.Client(), logger)
 	fsHandler := handlers.NewFSHandler()
@@ -1074,10 +1079,17 @@ func cwdGatewayPort() int {
 	return 4001
 }
 
-// skillsRepoPath 返回技能仓库（custom-skills）根目录。未设置 SKILLS_REPO_PATH
-// 时技能面板保持未配置状态（configured=false），不影响网关其他功能。
+// skillsRepoPath 返回技能仓库（custom-skills 或 easy-suite 等）根目录。未设置
+// SKILLS_REPO_PATH 时技能面板保持未配置状态（configured=false），不影响网关其他功能。
 func skillsRepoPath() string {
 	return os.Getenv("SKILLS_REPO_PATH")
+}
+
+// skillsManifestPath 返回启用清单的固定路径（SKILLS_MANIFEST_PATH）。技能仓库是
+// 公开/共享仓库（如 easy-suite）时，机器本地的 skills.enabled.json 应放到仓库之外，
+// 避免污染其 git 工作区；未设置时保持仓库内传统位置。
+func skillsManifestPath() string {
+	return os.Getenv("SKILLS_MANIFEST_PATH")
 }
 
 // assistantChatModelIDs 从模型目录里选出助理聊天可用的模型：具备 text

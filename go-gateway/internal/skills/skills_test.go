@@ -233,3 +233,56 @@ func TestSaveManifestStillRejectsUnknownSkill(t *testing.T) {
 		t.Fatal("写入路径应继续拒绝目录外技能")
 	}
 }
+
+// TestRegistryPathDiscovery 验证技能目录清单的两种仓库布局：根 registry 优先，
+// 其次 easy-suite 式的 skills-data/registry，都不存在时回退传统路径。
+func TestRegistryPathDiscovery(t *testing.T) {
+	repo := t.TempDir()
+	monorepo := filepath.Join(repo, "skills-data", "registry", "skills.json")
+	if err := os.MkdirAll(filepath.Dir(monorepo), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(monorepo, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := RegistryPath(repo); got != monorepo {
+		t.Fatalf("应发现 skills-data 布局: %s", got)
+	}
+	legacy := filepath.Join(repo, "registry", "skills.json")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := RegistryPath(repo); got != legacy {
+		t.Fatalf("根 registry 存在时应优先: %s", got)
+	}
+}
+
+// TestManifestOverride 验证启用清单可放到仓库之外：override 生效时不写仓库根，
+// Load/Save 都走 override 路径；清空 override 后回到传统位置。
+func TestManifestOverride(t *testing.T) {
+	repo := newTestRepo(t)
+	override := filepath.Join(t.TempDir(), "skills.enabled.json")
+	SetManifestOverride(override)
+	t.Cleanup(func() { SetManifestOverride("") })
+	in := Manifest{Version: 1, Targets: []string{"~/x"}, Enabled: []string{"alpha"}}
+	if err := SaveManifest(repo, in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, manifestName)); !os.IsNotExist(err) {
+		t.Fatalf("override 生效时不应写仓库内清单: %v", err)
+	}
+	m, exists, err := LoadManifest(repo)
+	if err != nil || !exists || len(m.Enabled) != 1 || m.Enabled[0] != "alpha" {
+		t.Fatalf("应从 override 读回清单: %v %v %v", m, exists, err)
+	}
+	if ManifestPath(repo) != override {
+		t.Fatalf("ManifestPath 应返回 override: %s", ManifestPath(repo))
+	}
+	SetManifestOverride("")
+	if ManifestPath(repo) != filepath.Join(repo, manifestName) {
+		t.Fatalf("清空 override 后应回到仓库内路径: %s", ManifestPath(repo))
+	}
+}
