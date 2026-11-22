@@ -246,9 +246,9 @@ llm-gateway migrate cc-switch --home /path/to/.cc-switch    # 指定 cc-switch �
 | `/admin/skills/market/install-jobs` | GET | 最近安装任务列表（保留最近 20 条） |
 | `/admin/skills/market/uninstall` | POST | 卸载市场技能 `{"name":"<目录名>"}`（只删带安装清单的目录） |
 
-### 技能面板（custom-skills 技能市场）
+### 技能面板（技能仓库与技能市场）
 
-桌面端的 Skills 页在设置 `SKILLS_REPO_PATH` 指向 custom-skills 仓库根目录后可用。仓库内的 `registry/skills.json` 是技能目录（`generate:registry` 生成），`skills.enabled.json` 是启用清单（声明哪些技能装到哪些目录）。同步用**符号链接**把仓库的 `skills/<id>` 铺进目标目录：仓库更新即时生效，重装系统后一条同步命令即可恢复；清理时只移除指向技能仓库的链接，目标目录里的其他文件一律不动。
+桌面端的 Skills 页在设置 `SKILLS_REPO_PATH` 指向技能仓库根目录后可用。清单位置兼容两种仓库布局：传统 custom-skills 的 `<repo>/registry/skills.json`，以及 easy-suite 的 `<repo>/skills-data/registry/skills.json`（技能本体都在 `<repo>/skills/<id>`，两者都在时优先根 registry）。`skills.enabled.json` 是启用清单（声明哪些技能装到哪些目录），默认写在仓库根；设置 `SKILLS_MANIFEST_PATH` 可把它放到仓库之外——技能仓库是公开/共享仓库（如 easy-suite）时，机器本地的启用状态不应落进其 git 工作区。同步用**符号链接**把仓库的 `skills/<id>` 铺进目标目录：仓库更新即时生效，重装系统后一条同步命令即可恢复；清理时只移除指向技能仓库的链接，目标目录里的其他文件一律不动。
 
 目标目录属于**运行网关的主机**，使用绝对路径或 `~/`（网关进程用户的 home）；不支持相对目标路径。技能 ID 必须是 registry 内不含路径分隔符的目录名。保存与同步均校验清单，保存采用临时文件替换，并串行处理管理端的保存/同步请求。`targets` 和 `enabled` 都必须显式传入数组，全部停用用 `enabled: []`。
 

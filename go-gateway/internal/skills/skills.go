@@ -23,15 +23,49 @@ type Manifest struct {
 }
 
 const manifestName = "skills.enabled.json"
+const registryFile = "skills.json"
 
 // DefaultManifest 返回清单缺失时的默认值：只认标准的 ~/.agents/skills 目录。
 func DefaultManifest() Manifest {
 	return Manifest{Version: 1, Targets: []string{"~/.agents/skills"}, Enabled: nil}
 }
 
-func RegistryPath(repo string) string { return filepath.Join(repo, "registry", "skills.json") }
-func ManifestPath(repo string) string { return filepath.Join(repo, manifestName) }
-func SkillsDir(repo string) string    { return filepath.Join(repo, "skills") }
+// manifestOverride 允许把 skills.enabled.json 放到仓库之外。monorepo 场景下
+// 仓库可能是公开站点仓库（easy-suite），机器本地的启用状态不应落进它的
+// git 工作区；由 SKILLS_MANIFEST_PATH 注入，缺省保持仓库内传统位置。
+var manifestOverride string
+
+// SetManifestOverride 设置启用清单的固定路径（进程级配置，main 启动时调用一次）。
+func SetManifestOverride(path string) { manifestOverride = path }
+
+// RegistryPath 定位技能目录清单，兼容两种仓库布局：传统 custom-skills 的
+// <repo>/registry/skills.json，以及 easy-suite 这类把清单收进子目录的
+// <repo>/skills-data/registry/skills.json（技能本体仍在 <repo>/skills）。
+// 两者都在时优先根 registry；都不存在时返回传统路径，保持既有报错信息。
+func RegistryPath(repo string) string {
+	legacy := filepath.Join(repo, "registry", registryFile)
+	if repo == "" {
+		return legacy
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	monorepo := filepath.Join(repo, "skills-data", "registry", registryFile)
+	if _, err := os.Stat(monorepo); err == nil {
+		return monorepo
+	}
+	return legacy
+}
+
+// ManifestPath 定位启用清单：设置了 override 就用 override，否则回仓库根。
+func ManifestPath(repo string) string {
+	if manifestOverride != "" {
+		return manifestOverride
+	}
+	return filepath.Join(repo, manifestName)
+}
+
+func SkillsDir(repo string) string { return filepath.Join(repo, "skills") }
 
 // Skill 是 registry/skills.json 条目中面板需要的字段子集，
 // 其余字段由 encoding/json 自动忽略。

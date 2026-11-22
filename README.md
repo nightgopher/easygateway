@@ -311,7 +311,8 @@ easygateway/
 | `CHATGPT_AUTH_FILE` | 否 | ChatGPT/Pi OAuth `auth.json` 路径；默认自动查找两个标准路径 |
 | `ADMIN_TOKEN` | 否 | 原生管理端/Admin API 独立 token；未设置时回退到主 token |
 | `PORT` | 否 | 监听端口（默认 4001） |
-| `SKILLS_REPO_PATH` | 否 | custom-skills 技能仓库路径；未设置时技能库面板显示未配置 |
+| `SKILLS_REPO_PATH` | 否 | 技能仓库路径（custom-skills 或 easy-suite，兼容 `skills-data/registry` 布局）；未设置时技能库面板显示未配置 |
+| `SKILLS_MANIFEST_PATH` | 否 | 启用清单 skills.enabled.json 的固定路径；技能仓库为公开/共享仓库时把这份机器本地状态放到仓库外，未设置时用仓库根 |
 | `SKILLS_MARKET_ENABLED` | 否 | 技能市场面板开关（默认开启） |
 | `SKILLS_MARKET_BASE_URL` | 否 | 远端技能商城地址（默认官方站） |
 | `SKILLS_MARKET_SKILLS_DIR` | 否 | 市场技能安装目录（默认 `~/.agents/skills`，与 EasyAgent 共用） |
