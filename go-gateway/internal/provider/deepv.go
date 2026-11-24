@@ -701,6 +701,23 @@ func (p *DeepVProvider) parseResponse(body []byte, model string) (*Response, err
 	if err != nil {
 		return nil, err
 	}
+	// DeepV glm-5.3-flash may return a lone dot as the entire reasoning
+	// preceding a tool call. It carries no reasoning; convertRequest restores
+	// the required history placeholder on replay when needed.
+	if p.boundModel == "glm-5.3-flash" && len(blocks) > 0 && len(result.Content) > 0 {
+		var thinking strings.Builder
+		onlyThinking := true
+		for _, block := range result.Content {
+			if block.Type != "thinking" {
+				onlyThinking = false
+				break
+			}
+			thinking.WriteString(block.Thinking)
+		}
+		if onlyThinking && strings.TrimSpace(thinking.String()) == "." {
+			result.Content = nil
+		}
+	}
 	result.Content = append(result.Content, blocks...)
 	if len(blocks) > 0 {
 		result.StopReason = "tool_use"
@@ -960,12 +977,36 @@ func (p *DeepVProvider) convertStream(r io.Reader, w io.Writer, model string) er
 			openTextIndex = -1
 		}
 	}
-	flushThinkingBlock := func() {
+	// Buffer a possible single-dot placeholder until its block boundary is
+	// known. A later delta may turn it into real reasoning, which must remain
+	// byte-for-byte intact. Other models continue to stream without buffering.
+	pendingThinking := ""
+	emitThinking := func(text string) {
+		if openThinkingIndex < 0 {
+			openThinkingIndex = openBlock(map[string]interface{}{"type": "thinking", "thinking": ""})
+		}
+		p.writeAnthropicEvent(writer, "content_block_delta", map[string]interface{}{
+			"index": openThinkingIndex,
+			"delta": map[string]interface{}{"type": "thinking_delta", "thinking": text},
+		})
+	}
+	flushThinkingBlock := func(beforeTool bool) {
+		if pendingThinking != "" {
+			if !beforeTool || strings.TrimSpace(pendingThinking) != "." {
+				emitThinking(pendingThinking)
+			}
+			pendingThinking = ""
+		}
 		if openThinkingIndex >= 0 {
 			closeBlock(openThinkingIndex)
 			openThinkingIndex = -1
 		}
 	}
+	defer func() {
+		if pendingThinking != "" {
+			emitThinking(pendingThinking)
+		}
+	}()
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1002,15 +1043,21 @@ func (p *DeepVProvider) convertStream(r io.Reader, w io.Writer, model string) er
 			for _, part := range candidate.Content.Parts {
 				switch {
 				case part.Reasoning != "":
-					if openThinkingIndex < 0 {
-						openThinkingIndex = openBlock(map[string]interface{}{"type": "thinking", "thinking": ""})
+					if p.boundModel == "glm-5.3-flash" && openThinkingIndex < 0 {
+						candidate := pendingThinking + part.Reasoning
+						trimmed := strings.TrimSpace(candidate)
+						if len(candidate) <= 64 && (trimmed == "" || trimmed == ".") {
+							pendingThinking = candidate
+							continue
+						}
 					}
-					p.writeAnthropicEvent(writer, "content_block_delta", map[string]interface{}{
-						"index": openThinkingIndex,
-						"delta": map[string]interface{}{"type": "thinking_delta", "thinking": part.Reasoning},
-					})
+					if pendingThinking != "" {
+						emitThinking(pendingThinking)
+						pendingThinking = ""
+					}
+					emitThinking(part.Reasoning)
 				case part.Text != "":
-					flushThinkingBlock()
+					flushThinkingBlock(false)
 					if openTextIndex < 0 {
 						openTextIndex = openBlock(map[string]interface{}{"type": "text", "text": ""})
 					}
@@ -1020,13 +1067,13 @@ func (p *DeepVProvider) convertStream(r io.Reader, w io.Writer, model string) er
 					})
 				case part.FunctionCall != nil:
 					flushTextBlock()
-					flushThinkingBlock()
+					flushThinkingBlock(true)
 					if err := toolCalls.add(part.FunctionCall); err != nil {
 						return err
 					}
 				case part.InlineData != nil:
 					flushTextBlock()
-					flushThinkingBlock()
+					flushThinkingBlock(false)
 					source, _ := json.Marshal(map[string]interface{}{
 						"type":       "base64",
 						"media_type": part.InlineData.MimeType,
@@ -1051,7 +1098,7 @@ func (p *DeepVProvider) convertStream(r io.Reader, w io.Writer, model string) er
 		return err
 	}
 	flushTextBlock()
-	flushThinkingBlock()
+	flushThinkingBlock(false)
 	for _, block := range blocks {
 		// Anthropic 规范：tool_use 块在 content_block_start 里只带空 input 占位，
 		// 参数经 input_json_delta 下发。严格按规范累积的客户端（如 DeepSeek
