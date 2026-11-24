@@ -704,9 +704,19 @@ func (p *DeepVProvider) parseResponse(body []byte, model string) (*Response, err
 	// DeepV glm-5.3-flash may return a lone dot as the entire reasoning
 	// preceding a tool call. It carries no reasoning; convertRequest restores
 	// the required history placeholder on replay when needed.
-	if p.boundModel == "glm-5.3-flash" && len(blocks) > 0 && len(result.Content) == 1 &&
-		result.Content[0].Type == "thinking" && strings.TrimSpace(result.Content[0].Thinking) == "." {
-		result.Content = nil
+	if p.boundModel == "glm-5.3-flash" && len(blocks) > 0 && len(result.Content) > 0 {
+		var thinking strings.Builder
+		onlyThinking := true
+		for _, block := range result.Content {
+			if block.Type != "thinking" {
+				onlyThinking = false
+				break
+			}
+			thinking.WriteString(block.Thinking)
+		}
+		if onlyThinking && strings.TrimSpace(thinking.String()) == "." {
+			result.Content = nil
+		}
 	}
 	result.Content = append(result.Content, blocks...)
 	if len(blocks) > 0 {

@@ -63,7 +63,7 @@ func TestDeepVToolReasoningPlaceholder(t *testing.T) {
 }
 
 func TestDeepVNonStreamingToolReasoningPlaceholder(t *testing.T) {
-	const input = `{"candidates":[{"content":{"parts":[{"reasoning":"."},{"functionCall":{"id":"call_1","name":"lookup","args":{"q":"x"}}}]}}]}`
+	const input = `{"candidates":[{"content":{"parts":[{"reasoning":" "},{"reasoning":"."},{"reasoning":" "},{"functionCall":{"id":"call_1","name":"lookup","args":{"q":"x"}}}]}}]}`
 	for _, tc := range []struct {
 		model        string
 		wantThinking bool
