@@ -682,3 +682,35 @@ func TestChatCompletionsHandlerFallsBackOnRegionalRestriction(t *testing.T) {
 		t.Fatalf("expected fallback stream to complete, got %s", w.Body.String())
 	}
 }
+
+// A DeepV placeholder is normalized before it reaches OpenAI-compatible clients,
+// while the same response still emits a complete tool call.
+func TestChatCompletionsDeepVToolPlaceholder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"reasoning\":\".\"},{\"functionCall\":{\"id\":\"call_test\",\"name\":\"lookup\",\"args\":{\"q\":\"x\"}}}]}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+	logger := log.New(io.Discard, "", 0)
+	router := provider.NewRouter(logger)
+	p := provider.NewDeepVProvider(&provider.Config{Name: "deepv-glm-5.3-flash", URL: upstream.URL + "/v1/chat/messages", Auth: provider.NewStaticAuth("test")}, t.TempDir(), "glm-5.3-flash")
+	router.RegisterProvider("deepv-glm-5.3-flash", p)
+	router.RegisterChain("deepv-glm-5.3-flash", []string{"deepv-glm-5.3-flash"})
+	engine := gin.New()
+	engine.POST("/v1/chat/completions", NewChatCompletionsHandler(router, logger).Handle)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepv-glm-5.3-flash","stream":true,"messages":[{"role":"user","content":"look up x"}],"max_tokens":20}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, `"reasoning_content"`) {
+		t.Fatal("placeholder escaped as reasoning")
+	}
+	if !strings.Contains(body, `"tool_calls"`) || !strings.Contains(body, `"name":"lookup"`) || !strings.Contains(body, `"finish_reason":"tool_calls"`) {
+		t.Fatalf("tool call lost: %s", body)
+	}
+}
