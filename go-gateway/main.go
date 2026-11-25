@@ -122,6 +122,10 @@ func main() {
 		RateLimitMax:     time.Duration(cfg.RateLimitMaxSeconds) * time.Second,
 	})
 
+	if err := router.LoadModelSelection(filepath.Join(defaultGatewayHome(), "model-selection.json")); err != nil {
+		logger.Fatalf("Failed to load model selection: %v", err)
+	}
+
 	router.SetRoutingPolicy(provider.RoutingPolicy{FirstOutputTimeout: time.Duration(cfg.FirstOutputSeconds) * time.Second, ReasoningFirstOutputTimeout: time.Duration(cfg.ReasoningFirstOutputSeconds) * time.Second, StreamIdleTimeout: time.Duration(cfg.StreamIdleSeconds) * time.Second, AttemptTimeout: time.Duration(cfg.AttemptSeconds) * time.Second, FallbackWaitBudget: time.Duration(cfg.FallbackWaitSeconds) * time.Second})
 	router.SetModelHealthTTL(time.Duration(cfg.ModelHealthTTLSeconds) * time.Second)
 
@@ -326,6 +330,8 @@ func main() {
 		admin.POST("/providers/:name/reset", adminHandler.HandleResetProvider)
 		admin.POST("/providers/:name/health-check", adminHandler.HandleCheckProvider)
 		admin.GET("/models", adminHandler.HandleModels)
+		admin.PATCH("/model-selection/easycode", adminHandler.HandleEasyCodeModelSelection)
+		admin.PATCH("/models/:model/selection", adminHandler.HandleModelSelection)
 		admin.POST("/models/doctor", adminHandler.HandleDoctor)
 		admin.PUT("/models/:model", adminHandler.HandleUpdateModel)
 		admin.GET("/routes", adminHandler.HandleRoutes)

@@ -115,6 +115,7 @@ func (h *AdminHandler) HandleModels(c *gin.Context) {
 		entry := modelPayload(info, stat, routeByModel[info.ID])
 		health := item.Health
 		entry["health"] = health
+		entry["enabled"] = h.router.ModelEnabled(info.ID)
 		switch health.Status {
 		case "available":
 			entry["status"] = "online"
@@ -607,4 +608,35 @@ func parseStatsRange(fromRaw, toRaw string, now time.Time) (string, string, erro
 		to = now
 	}
 	return from.Format("2006-01-02"), to.Format("2006-01-02"), nil
+}
+
+// HandleModelSelection changes a model's global visibility and direct routing.
+func (h *AdminHandler) HandleModelSelection(c *gin.Context) {
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled is required"})
+		return
+	}
+	if err := h.router.SetModelEnabled(c.Param("model"), *body.Enabled); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *AdminHandler) HandleEasyCodeModelSelection(c *gin.Context) {
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled is required"})
+		return
+	}
+	if err := h.router.SetEasyCodeModelsEnabled(*body.Enabled); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
