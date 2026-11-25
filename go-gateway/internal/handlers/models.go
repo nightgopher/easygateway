@@ -24,6 +24,9 @@ func (h *ModelHandler) Handle(c *gin.Context) {
 	models := make([]map[string]any, 0, len(catalog))
 	for _, entry := range catalog {
 		info, health := entry.Info, entry.Health
+		if !h.router.ModelEnabled(info.ID) {
+			continue
+		}
 		if onlyAvailable && !health.Available {
 			continue
 		}

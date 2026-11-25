@@ -246,7 +246,11 @@ func (a *App) View(c *ui.Context) {
 	a.browserModal(c)
 	a.modelPickerModal(c)
 	a.pruneDialog(c)
-	if ui.AlertDialog(c, &a.deleteOpen, "确认移除？", a.editorTitle, "取消", "移除") == 1 && a.deleteAction != nil {
+	confirmLabel := "移除"
+	if strings.HasPrefix(a.editorTitle, "关闭已发现") {
+		confirmLabel = "关闭"
+	}
+	if ui.AlertDialog(c, &a.deleteOpen, "确认操作？", a.editorTitle, "取消", confirmLabel) == 1 && a.deleteAction != nil {
 		action := a.deleteAction
 		a.deleteAction = nil
 		action()
@@ -946,6 +950,14 @@ func (a *App) overviewView(c *ui.Context) {
 }
 func (a *App) modelsView(c *ui.Context) {
 	ui.Row(c).Wrap().Gap(8).Children(func() {
+		muted(c, "模型关闭后不再出现在客户端列表，直接调用也会被拒绝；其他路由仍可使用同一渠道。首次更改后，新发现的模型默认关闭。")
+		ui.Button(c, "关闭全部 EasyCode 模型").Disabled(a.busy != "").OnClick(func() {
+			a.editorTitle = "关闭已发现的全部 EasyCode 模型？可随后逐个启用需要的模型。"
+			a.deleteAction = func() {
+				a.mutate("正在关闭 EasyCode 模型", "PATCH", "/model-selection/easycode", map[string]bool{"enabled": false})
+			}
+			a.deleteOpen = true
+		})
 		ui.Button(c, "探活匿名模型").Disabled(a.busy != "").OnClick(a.probeAnonymousModels)
 		ui.Button(c, "清理失败模型").Disabled(a.busy != "").OnClick(a.prunePreview)
 		muted(c, "批量探活只调用匿名模型；付费与账号模型需单独验证。清理仅针对探活被确定性拒绝（401/402/403/404）的模型。")
@@ -980,6 +992,15 @@ func (a *App) modelsView(c *ui.Context) {
 						muted(c, m.Provider+" · "+strings.Join(m.Capabilities, " / "))
 					})
 					status(c, m.Status)
+					if m.Enabled != nil {
+						label := "关闭模型"
+						if !*m.Enabled {
+							label = "启用模型"
+						}
+						ui.Button(c, label).Label(m.Name + " " + label).Disabled(a.busy != "").OnClick(func() {
+							a.mutate("正在更新模型", "PATCH", "/models/"+url.PathEscape(m.Name)+"/selection", map[string]bool{"enabled": !*m.Enabled})
+						})
+					}
 					ui.Button(c, "能力设置").Label(m.Name + " 能力设置").Disabled(a.busy != "").OnClick(func() {
 						a.editorKind = "model"
 						a.editorID = m.Name

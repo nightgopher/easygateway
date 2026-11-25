@@ -18,6 +18,8 @@ import (
 
 // Router 管理提供商路由和 fallback
 type Router struct {
+	selectionPath  string
+	enabledModels  map[string]bool
 	providers      map[string]Provider
 	chains         map[string][]string // 模型名 -> 提供商名列表
 	models         map[string]ModelInfo
@@ -199,7 +201,7 @@ func (r *Router) Route(modelName string) ([]Provider, error) {
 	defer r.mu.RUnlock()
 
 	providerNames, ok := r.chains[modelName]
-	if !ok {
+	if !ok || !r.modelEnabledLocked(modelName) {
 		return nil, &UnknownModelError{Model: modelName}
 	}
 
@@ -248,7 +250,7 @@ func (r *Router) ModelUsable(modelName string) bool {
 	defer r.mu.RUnlock()
 
 	providerNames, ok := r.chains[modelName]
-	if !ok {
+	if !ok || !r.modelEnabledLocked(modelName) {
 		return false
 	}
 	for _, name := range providerNames {

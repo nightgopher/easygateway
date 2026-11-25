@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -118,4 +119,55 @@ func (p *adminTestProvider) UseBearer() bool                  { return true }
 func (p *adminTestProvider) IsHealthy(_ context.Context) bool { return true }
 func (p *adminTestProvider) ForwardRequest(_ context.Context, _ *provider.Request) (*provider.Response, error) {
 	return &provider.Response{Model: p.name}, nil
+}
+
+func TestModelSelectionExcludesPublicListAndPreservesAdminList(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logger := log.New(io.Discard, "", 0)
+	router := provider.NewRouter(logger)
+	router.RegisterProvider("test", &adminTestProvider{name: "test"})
+	router.RegisterChain("one", []string{"test"})
+	router.RegisterChain("two", []string{"test"})
+	if err := router.LoadModelSelection(filepath.Join(t.TempDir(), "selection.json")); err != nil {
+		t.Fatal(err)
+	}
+	admin := NewAdminHandler(router, metrics.NewCollector(), logger, nil)
+	engine := gin.New()
+	engine.PATCH("/admin/models/:model/selection", admin.HandleModelSelection)
+	engine.GET("/admin/models", admin.HandleModels)
+	engine.GET("/v1/models", NewModelHandler(router, logger).Handle)
+	req := httptest.NewRequest(http.MethodPatch, "/admin/models/one/selection", bytes.NewBufferString(`{"enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	var public struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &public); err != nil {
+		t.Fatal(err)
+	}
+	if len(public.Data) != 1 || public.Data[0].ID != "two" {
+		t.Fatalf("public models: %s", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/models", nil))
+	var listing struct {
+		Models []struct {
+			Model   string `json:"model"`
+			Enabled bool   `json:"enabled"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listing); err != nil {
+		t.Fatal(err)
+	}
+	if len(listing.Models) != 2 || listing.Models[0].Model != "one" || listing.Models[0].Enabled {
+		t.Fatalf("admin models: %s", w.Body.String())
+	}
 }

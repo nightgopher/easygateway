@@ -49,6 +49,7 @@ type PruneResult struct {
 }
 
 type Model struct {
+	Enabled      *bool       `json:"enabled"`
 	Health       ModelHealth `json:"health"`
 	Name         string      `json:"model"`
 	Provider     string      `json:"provider"`
