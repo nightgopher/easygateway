@@ -1,6 +1,7 @@
 package privacy
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -119,5 +120,81 @@ func TestStructuredToolInputMasksUnknownCredentialFormat(t *testing.T) {
 	}
 	if !strings.Contains(s.Restore(string(masked)), secret) {
 		t.Fatal("credential not restored")
+	}
+}
+
+func TestJSONEncodedToolArgumentsProtectUnknownKey(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("user")
+	secret := "new-vendor-credential-345"
+	body := `{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"write","arguments":"{\"api_key\":\"` + secret + `\"}"}}]}]}`
+	result, err := s.MaskJSON([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(result), secret) {
+		t.Fatal("encoded credential leaked")
+	}
+	if !strings.Contains(s.Restore(string(result)), secret) {
+		t.Fatal("credential not restored")
+	}
+}
+
+func TestRestoreJSONEscapesCredentialInToolArguments(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("user")
+	secret := "pass\"word\\test"
+	token, err := s.maskSecret(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, _ := json.Marshal(map[string]string{"api_key": token})
+	body, _ := json.Marshal(map[string]any{"function": map[string]string{"arguments": string(inner)}})
+	restored, err := s.RestoreJSON(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Function struct {
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(restored, &result); err != nil {
+		t.Fatal(err)
+	}
+	var args map[string]string
+	if err := json.Unmarshal([]byte(result.Function.Arguments), &args); err != nil {
+		t.Fatal(err)
+	}
+	if args["api_key"] != secret {
+		t.Fatal("credential changed")
+	}
+}
+
+func TestRestoreJSONPreservesSignedReasoning(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("user")
+	token, _ := s.maskSecret("sensitive-key")
+	b, _ := json.Marshal(map[string]any{"type": "thinking", "thinking": token, "signature": "sig"})
+	got, err := s.RestoreJSON(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), token) || strings.Contains(string(got), "sensitive-key") {
+		t.Fatal("signed content was changed")
+	}
+}
+
+func TestRestoreJSONRestoresToolInputFieldsNamedLikeProtocolFields(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("user")
+	token, _ := s.maskSecret("account-name")
+	body, _ := json.Marshal(map[string]any{"type": "tool_use", "name": "write", "input": map[string]any{"name": token}})
+	restored, err := s.RestoreJSON(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(restored), "account-name") {
+		t.Fatalf("tool input not restored: %s", restored)
 	}
 }

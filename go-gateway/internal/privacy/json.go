@@ -64,6 +64,26 @@ func (s *Session) maskValue(v any, key string, inArgs, signed bool) (any, error)
 		}
 		return result, nil
 	case string:
+		// OpenAI tool calls encode a second JSON document inside arguments.
+		// Parse it separately so custom credential values under api_key are
+		// found, and marshal it again to preserve JSON escaping.
+		if key == "arguments" && json.Valid([]byte(v)) {
+			var nested any
+			decoder := json.NewDecoder(strings.NewReader(v))
+			decoder.UseNumber()
+			if err := decoder.Decode(&nested); err != nil {
+				return nil, err
+			}
+			changed, err := s.maskValue(nested, "", true, signed)
+			if err != nil {
+				return nil, err
+			}
+			encoded, err := json.Marshal(changed)
+			if err != nil {
+				return nil, err
+			}
+			return string(encoded), nil
+		}
 		if !inArgs && protocolField(key) {
 			return v, nil
 		}
@@ -100,4 +120,81 @@ func secretField(key string) bool {
 		return true
 	}
 	return false
+}
+
+// RestoreJSON restores placeholders in JSON string values while preserving
+// escaped JSON documents carried inside tool-call arguments.
+func (s *Session) RestoreJSON(body []byte) ([]byte, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var v any
+	if err := decoder.Decode(&v); err != nil {
+		return nil, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, errors.New("privacy: invalid trailing JSON")
+	}
+	result, err := s.restoreValue(v, "", false)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+func (s *Session) restoreValue(v any, key string, inArgs bool) (any, error) {
+	switch v := v.(type) {
+	case map[string]any:
+		typ, _ := v["type"].(string)
+		if !inArgs && (typ == "thinking" || typ == "redacted_thinking" || typ == "reasoning") {
+			return v, nil
+		}
+		out := make(map[string]any, len(v))
+		for k, x := range v {
+			if !inArgs && (k == "signature" || k == "thoughtSignature" || k == "thought_signature" || k == "encrypted_content") {
+				out[k] = x
+				continue
+			}
+			toolArgs := inArgs || k == "arguments" || (k == "input" && strings.HasSuffix(typ, "tool_use"))
+			next, err := s.restoreValue(x, k, toolArgs)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = next
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(v))
+		for i, x := range v {
+			next, err := s.restoreValue(x, key, inArgs)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = next
+		}
+		return out, nil
+	case string:
+		if key == "arguments" && json.Valid([]byte(v)) {
+			dec := json.NewDecoder(strings.NewReader(v))
+			dec.UseNumber()
+			var nested any
+			if err := dec.Decode(&nested); err != nil {
+				return nil, err
+			}
+			value, err := s.restoreValue(nested, "", true)
+			if err != nil {
+				return nil, err
+			}
+			b, err := json.Marshal(value)
+			if err != nil {
+				return nil, err
+			}
+			return string(b), nil
+		}
+		if !inArgs && protocolField(key) {
+			return v, nil
+		}
+		return s.Restore(v), nil
+	default:
+		return v, nil
+	}
 }
