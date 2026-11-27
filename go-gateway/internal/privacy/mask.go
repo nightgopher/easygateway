@@ -66,9 +66,12 @@ func (e *Engine) NewSession(scope string) *Session {
 }
 
 var patterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b`),
+	regexp.MustCompile(`\b1[3-9][0-9]{9}\b`),
+	regexp.MustCompile(`(?s)-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----.*?-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----`),
 	regexp.MustCompile(`(?i)\b(?:sk-[A-Za-z0-9._-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,}|AIza[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16})\b`),
 	regexp.MustCompile(`(?i)\bBearer\s+([A-Za-z0-9._~+/=-]{8,})`),
-	regexp.MustCompile(`(?i)\b(?:api[_-]?key|access[_-]?token|password|passwd|secret)\s*[:=]\s*["']?([^\s"',;]{8,})`),
+	regexp.MustCompile(`(?i)\b(?:api[_-]?key|access[_-]?token|password|passwd|secret)["']?\s*[:=]\s*["']?([^\s"',;]{8,})`),
 }
 
 // Mask masks detected credentials and values already identified in this request.
@@ -161,11 +164,39 @@ func (s *Session) maskSecret(original string) (string, error) {
 		s.engine.mu.Unlock()
 		return "", ErrCapacity
 	}
+	_, existed := entries[placeholder]
 	entries[placeholder] = remembered{value: original, expires: now.Add(retention)}
 	s.engine.mu.Unlock()
+	if !existed {
+		s.engine.expireLater(s.scope, placeholder, retention)
+	}
 	s.values[placeholder] = original
 	s.originals[original] = placeholder
 	return placeholder, nil
+}
+
+// expireLater drops idle secrets even if the gateway receives no more requests.
+func (e *Engine) expireLater(scope, placeholder string, delay time.Duration) {
+	time.AfterFunc(delay, func() {
+		e.mu.Lock()
+		entries := e.scopes[scope]
+		item, ok := entries[placeholder]
+		if !ok {
+			e.mu.Unlock()
+			return
+		}
+		left := time.Until(item.expires)
+		if left <= 0 {
+			delete(entries, placeholder)
+			if len(entries) == 0 {
+				delete(e.scopes, scope)
+			}
+			e.mu.Unlock()
+			return
+		}
+		e.mu.Unlock()
+		e.expireLater(scope, placeholder, left)
+	})
 }
 
 // Restore replaces only tokens emitted by this request. Input from a different

@@ -9,6 +9,7 @@ import (
 )
 
 var ErrSignedContent = errors.New("privacy: signed content cannot be safely rewritten")
+var ErrUnsupportedContent = errors.New("privacy: unsupported opaque content")
 
 // MaskJSON is an experimental primitive. It is not wired to handlers until
 // every protocol and streaming path has been verified.
@@ -38,6 +39,9 @@ func (s *Session) maskValue(v any, key string, inArgs, signed bool) (any, error)
 	switch v := v.(type) {
 	case map[string]any:
 		t, _ := v["type"].(string)
+		if !inArgs && (t == "image" || t == "image_url" || t == "input_image" || t == "input_audio" || t == "input_file" || t == "file" || t == "document" || t == "video" || t == "video_url" || t == "input_video") {
+			return nil, ErrUnsupportedContent
+		}
 		signed = signed || t == "thinking" || t == "redacted_thinking" || t == "reasoning"
 		result := make(map[string]any, len(v))
 		for k, x := range v {
@@ -85,11 +89,20 @@ func (s *Session) maskValue(v any, key string, inArgs, signed bool) (any, error)
 			return string(encoded), nil
 		}
 		if !inArgs && protocolField(key) {
+			if key == "url" || key == "image_url" || key == "data" {
+				checked, err := s.Mask(v)
+				if err != nil {
+					return nil, err
+				}
+				if checked != v {
+					return nil, ErrUnsupportedContent
+				}
+			}
 			return v, nil
 		}
 		var masked string
 		var err error
-		if inArgs && secretField(key) && v != "" {
+		if secretField(key) && v != "" {
 			masked, err = s.maskSecret(v)
 		} else {
 			masked, err = s.Mask(v)

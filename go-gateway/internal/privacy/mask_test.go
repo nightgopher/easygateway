@@ -236,3 +236,29 @@ func TestOversizedSensitiveValueRejected(t *testing.T) {
 		t.Fatalf("expected capacity error: %v", err)
 	}
 }
+
+func TestMasksEmbeddedJSONAndPrivateKey(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("a")
+	credential := "xyz-custom-098765432"
+	pem := "-----BEGIN PRIVATE KEY-----\nABCDEFGH01234567\n-----END PRIVATE KEY-----"
+	for _, text := range []string{`example {"api_key":"` + credential + `"}`, pem} {
+		masked, err := s.Mask(text)
+		if err != nil || strings.Contains(masked, credential) || strings.Contains(masked, "ABCDEFGH01234567") {
+			t.Fatalf("leaked: %q err=%v", masked, err)
+		}
+		if s.Restore(masked) != text {
+			t.Fatal("roundtrip differs")
+		}
+	}
+}
+
+func TestMasksEmailAndPhone(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("a")
+	input := "email user@example.org phone 13800138000"
+	masked, err := s.Mask(input)
+	if err != nil || strings.Contains(masked, "user@example.org") || strings.Contains(masked, "13800138000") || s.Restore(masked) != input {
+		t.Fatalf("masking failed: %v", err)
+	}
+}

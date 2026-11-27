@@ -111,3 +111,18 @@ func TestSSEToolArgumentsEscapeSecrets(t *testing.T) {
 		t.Fatal("wrong credential")
 	}
 }
+
+func TestSSEDoesNotRewriteSignedThinking(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("a")
+	token, _ := s.maskSecret("sensitive")
+	body, _ := json.Marshal(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "thinking_delta", "thinking": token}})
+	d := s.NewSSEDecoder()
+	out, err := d.Push([]byte("data: " + string(body) + "\n\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), token) || strings.Contains(string(out), "sensitive") {
+		t.Fatal("signed thinking was rewritten")
+	}
+}

@@ -168,6 +168,9 @@ func (d *SSEDecoder) decode(raw []byte) (*sseFrame, bool, error) {
 		return f, false, nil
 	}
 	typ, _ := root["type"].(string)
+	if strings.HasPrefix(typ, "response.reasoning") {
+		return f, false, nil
+	}
 	terminal := typ == "message_stop" || typ == "response.completed" || typ == "response.failed" || typ == "response.incomplete"
 	context := typ + ":" + fmt.Sprint(root["output_index"]) + ":" + fmt.Sprint(root["content_index"]) + ":" + fmt.Sprint(root["index"]) + ":" + fmt.Sprint(root["item_id"])
 	d.walk(root, context, "", false, f)
@@ -177,7 +180,7 @@ func (d *SSEDecoder) walk(value any, ctx, path string, args bool, f *sseFrame) {
 	switch v := value.(type) {
 	case map[string]any:
 		typ, _ := v["type"].(string)
-		if !args && (typ == "thinking" || typ == "redacted_thinking" || typ == "reasoning") {
+		if !args && (typ == "thinking" || typ == "thinking_delta" || typ == "signature_delta" || typ == "redacted_thinking" || typ == "reasoning") {
 			return
 		}
 		identity := ""
@@ -188,7 +191,7 @@ func (d *SSEDecoder) walk(value any, ctx, path string, args bool, f *sseFrame) {
 			next := path + "/" + k + identity
 			tool := args || k == "arguments" || k == "partial_json" || (k == "input" && strings.HasSuffix(typ, "tool_use"))
 			if str, ok := x.(string); ok {
-				if (!tool && protocolField(k)) || k == "signature" || k == "thoughtSignature" || k == "encrypted_content" {
+				if !tool && (protocolField(k) || k == "signature" || k == "thoughtSignature" || k == "encrypted_content") {
 					continue
 				}
 				id := ctx + next

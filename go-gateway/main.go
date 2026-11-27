@@ -32,6 +32,7 @@ import (
 	"github.com/nightgopher/easygateway/internal/metrics"
 	"github.com/nightgopher/easygateway/internal/middleware"
 	"github.com/nightgopher/easygateway/internal/piconfig"
+	"github.com/nightgopher/easygateway/internal/privacy"
 	"github.com/nightgopher/easygateway/internal/provider"
 	"github.com/nightgopher/easygateway/internal/providerpresets"
 	"github.com/nightgopher/easygateway/internal/safego"
@@ -221,6 +222,15 @@ func main() {
 		maxRequestBody = int64(cfg.MaxRequestBodyMB) << 20
 	}
 	logger.Printf("Max request body: %d MiB", maxRequestBody>>20)
+	privacyGate, err := privacy.NewGate(maxRequestBody)
+	if err != nil {
+		logger.Fatalf("privacy init failed: %v", err)
+	}
+	privacySettings, err := privacy.OpenSettings(filepath.Join(defaultGatewayHome(), "privacy.json"), privacyGate)
+	if err != nil {
+		logger.Fatalf("privacy settings failed: %v", err)
+	}
+	engine.Use(privacyGate.Middleware())
 
 	// 注册路由
 	msgHandler := handlers.NewMessageHandler(router, logger)
@@ -320,6 +330,9 @@ func main() {
 	admin := engine.Group("/admin")
 	admin.Use(adminAuth, decodeAdminParams)
 	{
+		admin.GET("/privacy", privacySettings.HandleGet)
+		admin.POST("/privacy/preview", privacySettings.HandlePreview)
+		admin.PUT("/privacy", privacySettings.HandlePut)
 		admin.GET("/dashboard", adminHandler.HandleDashboard)
 		admin.GET("/providers", adminHandler.HandleProviders)
 		admin.PATCH("/providers/:name", adminHandler.HandleUpdateProvider)
