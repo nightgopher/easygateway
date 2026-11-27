@@ -675,6 +675,32 @@ func (a *App) addMemory() {
 func (a *App) settingsView(c *ui.Context) {
 	ui.Scroll(c).Grow(1).Gap(16).Children(func() {
 		a.updateCenterView(c)
+		if a.privacyAvailable {
+			card(c, func() {
+				ui.Text(c, "可还原脱敏").FontSize(18).Bold()
+				muted(c, "发送前替换部分密钥、邮箱及手机号；模型回复中的占位符会在网关还原。检测不覆盖所有敏感内容。")
+				muted(c, "开启后不支持图片、文档和音频请求；网关运行在远程时，原文先到达远程网关。")
+				muted(c, "工具参数可能还原密钥，仍需检查 Agent 的工具权限与执行确认。")
+				ui.TextArea(c, &a.privacyPreviewInput).Lines(2, 4).Label("测试脱敏内容").Placeholder("输入示例文本，在当前网关预览").Disabled(a.busy != "")
+				ui.Button(c, "预览脱敏").Disabled(a.busy != "" || strings.TrimSpace(a.privacyPreviewInput) == "").OnClick(func() {
+					draft := a.privacyPreviewInput
+					a.work("正在预览脱敏", 35*time.Second, func(ctx context.Context, client *connection.Client) (func(), error) {
+						var result struct {
+							Masked string `json:"masked"`
+						}
+						err := client.JSON(ctx, "POST", "/privacy/preview", map[string]string{"text": draft}, &result)
+						return func() { a.privacyPreviewResult = result.Masked }, err
+					})
+				})
+				if a.privacyPreviewResult != "" {
+					ui.Text(c, a.privacyPreviewResult).Selectable()
+				}
+				enabled := a.privacyEnabled
+				if ui.Checkbox(c, &enabled, "启用可还原脱敏").Disabled(a.busy != "").Changed() {
+					a.mutate("正在保存隐私设置", "PUT", "/privacy", map[string]bool{"enabled": enabled})
+				}
+			})
+		}
 		card(c, func() {
 			ui.Text(c, "助理人设").FontSize(18).Bold()
 			muted(c, "留空使用默认提示词。配置保存在当前连接的网关主机。")

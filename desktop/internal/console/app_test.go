@@ -463,3 +463,28 @@ func TestCCSwitchRemoteUploadFlow(t *testing.T) {
 		t.Fatal("远程导入结果未渲染")
 	}
 }
+
+func TestPrivacySettingSendsToggleAndResetsOnHostChange(t *testing.T) {
+	a, queue, requests := fixture(t)
+	a.page = "settings"
+	a.reload()
+	await(t, a, queue)
+	tt := ui.NewTester(a.View, 1100, 1500)
+	if !tt.HasText("可还原脱敏") {
+		t.Fatal("privacy setting missing")
+	}
+	click(t, tt, "启用可还原脱敏")
+	await(t, a, queue)
+	select {
+	case got := <-requests:
+		if got != `PUT /admin/privacy {"enabled":true}` {
+			t.Fatalf("unexpected request: %s", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("missing privacy update")
+	}
+	a.resetHost()
+	if a.privacyAvailable || a.privacyEnabled {
+		t.Fatal("privacy state leaked across hosts")
+	}
+}

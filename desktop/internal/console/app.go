@@ -75,6 +75,8 @@ type App struct {
 	memoryScope, memoryKey, memoryText                                    string
 	prompt                                                                Prompt
 	promptDraft                                                           string
+	privacyEnabled, privacyAvailable                                      bool
+	privacyPreviewInput, privacyPreviewResult                             string
 	gatewayConfig                                                         GatewayConfigStatus
 	gatewayConfigErr                                                      string
 	corsConfig                                                            CORSConfig
@@ -414,6 +416,10 @@ func (a *App) reload() {
 			err := c.JSON(ctx, "GET", endpoint, nil, &d)
 			return func() { a.memories = d.Memories; a.loaded = true }, err
 		case "settings":
+			var privacy struct {
+				Enabled bool `json:"enabled"`
+			}
+			privacyErr := c.JSON(ctx, "GET", "/privacy", nil, &privacy)
 			var gatewayConfig GatewayConfigStatus
 			gatewayErr := c.JSON(ctx, "GET", "/config/status", nil, &gatewayConfig)
 			var cors CORSConfig
@@ -442,6 +448,8 @@ func (a *App) reload() {
 			var gwStatus GatewayUpdateStatus
 			gwStatusErr := c.JSON(ctx, "GET", "/update/status", nil, &gwStatus)
 			return func() {
+				a.privacyAvailable = privacyErr == nil
+				a.privacyEnabled = privacy.Enabled
 				a.gatewayConfig = gatewayConfig
 				a.gatewayConfigErr = ""
 				if gatewayErr != nil {
@@ -634,6 +642,9 @@ func (a *App) resetHost() {
 	a.modelCategory = modelCategoryAll
 	a.prompt = Prompt{}
 	a.promptDraft = ""
+	a.privacyAvailable = false
+	a.privacyEnabled = false
+	a.privacyPreviewInput, a.privacyPreviewResult = "", ""
 	a.gatewayConfig = GatewayConfigStatus{}
 	a.gatewayConfigErr = ""
 	a.corsConfig = CORSConfig{}
