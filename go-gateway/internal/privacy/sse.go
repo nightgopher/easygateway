@@ -213,7 +213,13 @@ func (d *SSEDecoder) walk(value any, ctx, path string, args bool, f *sseFrame) {
 		}
 	case []any:
 		for i, x := range v {
-			d.walk(x, ctx, path+"/"+strconv.Itoa(i), args, f)
+			identity := strconv.Itoa(i)
+			if object, ok := x.(map[string]any); ok {
+				if index, ok := object["index"]; ok {
+					identity = "index:" + fmt.Sprint(index)
+				}
+			}
+			d.walk(x, ctx, path+"/"+identity, args, f)
 		}
 	}
 }

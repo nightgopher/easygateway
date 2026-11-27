@@ -126,3 +126,32 @@ func TestSSEDoesNotRewriteSignedThinking(t *testing.T) {
 		t.Fatal("signed thinking was rewritten")
 	}
 }
+
+func TestSSEParallelToolIndicesSurviveArrayReordering(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("a")
+	one := "sk-" + strings.Repeat("a", 20)
+	two := "sk-" + strings.Repeat("b", 20)
+	a, _ := s.Mask(one)
+	b, _ := s.Mask(two)
+	call := func(index int, text string) any {
+		return map[string]any{"index": index, "function": map[string]string{"arguments": text}}
+	}
+	frame := func(calls ...any) string {
+		body, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"tool_calls": calls}}}})
+		return "data: " + string(body) + "\n\n"
+	}
+	d := s.NewSSEDecoder()
+	out, err := d.Push([]byte(frame(call(0, a[:10]), call(1, b[:10])) + frame(call(1, b[10:]), call(0, a[10:])) + "data: [DONE]\n\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail, err := d.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out = append(out, tail...)
+	if !strings.Contains(string(out), one) || !strings.Contains(string(out), two) {
+		t.Fatalf("reordered tools were not restored: %s", out)
+	}
+}
