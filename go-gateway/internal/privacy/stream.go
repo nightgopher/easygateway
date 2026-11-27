@@ -1,13 +1,17 @@
 package privacy
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // StreamRestorer restores a single logical text stream. Callers must keep
 // separate restorers for different tool calls and text fields, and Finish it
 // at the end of the field. It must not be used on serialized JSON or SSE.
 type StreamRestorer struct {
-	session *Session
-	pending string
+	session      *Session
+	pending      string
+	jsonFragment bool
 }
 
 func (s *Session) NewStreamRestorer() *StreamRestorer { return &StreamRestorer{session: s} }
@@ -41,7 +45,12 @@ func (r *StreamRestorer) Write(chunk string) string {
 			break
 		}
 		token := r.pending[:end+2]
-		out.WriteString(r.session.Restore(token))
+		if value, ok := r.session.values[token]; ok && r.jsonFragment {
+			escaped, _ := json.Marshal(value)
+			out.Write(escaped[1 : len(escaped)-1])
+		} else {
+			out.WriteString(r.session.Restore(token))
+		}
 		r.pending = r.pending[end+2:]
 	}
 	return out.String()

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestMaskRestoreAndIsolate(t *testing.T) {
@@ -196,5 +197,42 @@ func TestRestoreJSONRestoresToolInputFieldsNamedLikeProtocolFields(t *testing.T)
 	}
 	if !strings.Contains(string(restored), "account-name") {
 		t.Fatalf("tool input not restored: %s", restored)
+	}
+}
+
+func TestRememberedValuesRestoreAcrossRequestsForSameIdentity(t *testing.T) {
+	e, _ := NewEngine()
+	first := e.NewSession("a")
+	secret := "sk-" + strings.Repeat("x", 20)
+	masked, err := first.Mask(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.NewSession("a").Restore(masked) != secret {
+		t.Fatal("same identity did not restore after request")
+	}
+	if e.NewSession("b").Restore(masked) != masked {
+		t.Fatal("credential crossed identity boundary")
+	}
+}
+func TestExpiredValuesDoNotRestore(t *testing.T) {
+	e, _ := NewEngine()
+	first := e.NewSession("a")
+	masked, _ := first.Mask("sk-" + strings.Repeat("x", 20))
+	e.mu.Lock()
+	item := e.scopes["a"][masked]
+	item.expires = time.Now().Add(-time.Second)
+	e.scopes["a"][masked] = item
+	e.mu.Unlock()
+	if e.NewSession("a").Restore(masked) != masked {
+		t.Fatal("expired credential restored")
+	}
+}
+
+func TestOversizedSensitiveValueRejected(t *testing.T) {
+	e, _ := NewEngine()
+	s := e.NewSession("a")
+	if _, err := s.maskSecret(strings.Repeat("x", 4097)); err != ErrCapacity {
+		t.Fatalf("expected capacity error: %v", err)
 	}
 }
