@@ -71,6 +71,8 @@ minimax/cline/lobster/gemini/codebuddy/workbuddy/trae/loomy/raccoon/opencode 十
 
 EasyCode 渠道使用飞书登录，支持从桌面端管理远程网关：飞书回调落在桌面端的本机回环地址，授权码经现有管理连接交给网关换取令牌。登录后会按当前账号读取模型目录，以 `easycode/<上游模型名>` 注册可用模型和对应能力；启动后、登录后及此后每 5 分钟刷新，也可在桌面端手动刷新。使用该账号的额度和上游权限，账号退出后相应动态模型移出目录。飞书登录渠道不需要设置 `DEEPV_ENABLED`，也不读取或覆盖其他 EasyCode 客户端的凭据。
 
+EasyCode 模型请求使用 GenAI 格式，系统提示词由适配器放入 `config.systemInstruction`；放在请求顶层会被该接口忽略。OpenAI 入口的 system 消息与 Anthropic 入口的 system 字符串／文本块均保留为系统指令，不拼入用户消息。
+
 远程管理连接应使用 HTTPS 或可信的加密网络，因为管理令牌和一次性授权码都经过该连接。
 
 `providers.yaml` 的 fallback 链可以引用 `easycode/<上游模型名>`；配置预检只验证名称格式，实际是否有模型权限以账号目录为准。模型未登录、被移除或暂不可用时，链继续尝试其他已配置 Provider。

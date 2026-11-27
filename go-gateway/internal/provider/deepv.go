@@ -46,10 +46,9 @@ type gitInfo struct {
 
 // deepVRequest DeepV Server 请求格式（GenAI 格式）
 type deepVRequest struct {
-	Model             string         `json:"model"`
-	Contents          []deepVContent `json:"contents"`
-	SystemInstruction *deepVContent  `json:"systemInstruction,omitempty"`
-	Config            *deepVConfig   `json:"config,omitempty"`
+	Model    string         `json:"model"`
+	Contents []deepVContent `json:"contents"`
+	Config   *deepVConfig   `json:"config,omitempty"`
 }
 
 // deepVContent GenAI content 格式
@@ -100,10 +99,11 @@ type deepVFunctionResponse struct {
 
 // deepVConfig GenAI config 格式
 type deepVConfig struct {
-	MaxOutputTokens int         `json:"maxOutputTokens,omitempty"`
-	Temperature     float64     `json:"temperature,omitempty"`
-	TopP            float64     `json:"topP,omitempty"`
-	Tools           []deepVTool `json:"tools,omitempty"`
+	MaxOutputTokens   int           `json:"maxOutputTokens,omitempty"`
+	Temperature       float64       `json:"temperature,omitempty"`
+	TopP              float64       `json:"topP,omitempty"`
+	Tools             []deepVTool   `json:"tools,omitempty"`
+	SystemInstruction *deepVContent `json:"systemInstruction,omitempty"`
 }
 
 // deepVTool GenAI tool 格式
@@ -388,6 +388,9 @@ func (p *DeepVProvider) convertRequest(req *Request) (*deepVRequest, error) {
 		result.Contents = append(result.Contents, content)
 	}
 
+	result.Config = &deepVConfig{MaxOutputTokens: req.MaxTokens}
+
+	// EasyCode reads systemInstruction inside config, not at the request root.
 	// 转换 system（支持字符串和数组格式）
 	if systemRaw, ok := req.RawField("system"); ok {
 		var systemParts []deepVPart
@@ -406,11 +409,10 @@ func (p *DeepVProvider) convertRequest(req *Request) (*deepVRequest, error) {
 			}
 		}
 		if len(systemParts) > 0 {
-			result.SystemInstruction = &deepVContent{Parts: systemParts}
+			result.Config.SystemInstruction = &deepVContent{Parts: systemParts}
 		}
 	}
 
-	result.Config = &deepVConfig{MaxOutputTokens: req.MaxTokens}
 	// Claude Haiku 5.5 rejects temperature; adapt only this bound upstream model.
 	if temperatureRaw, ok := req.RawField("temperature"); ok && model != "claude-haiku-5-5" {
 		var temperature float64
