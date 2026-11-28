@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
-	chatgptTokenURL = "https://auth.openai.com/oauth/token"
-	chatgptClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+	chatgptCodexBase = "https://chatgpt.com/backend-api/codex"
+	chatgptCodexURL  = chatgptCodexBase + "/responses"
+	chatgptTokenURL  = "https://auth.openai.com/oauth/token"
+	chatgptClientID  = "app_EMoamEEZ73f0CkXaXp7hrann"
 )
 
 // ChatGPTModel describes a model exposed by the ChatGPT Codex subscription
@@ -99,17 +100,6 @@ var chatGPTModelCatalog = []ChatGPTModel{
 		MaxInputTokens:  272000,
 		MaxOutputTokens: 128000,
 	},
-}
-
-// ChatGPTModelCatalog returns a defensive copy for router registration.
-func ChatGPTModelCatalog() []ChatGPTModel {
-	models := make([]ChatGPTModel, len(chatGPTModelCatalog))
-	for i, model := range chatGPTModelCatalog {
-		model.Capabilities = append([]string(nil), model.Capabilities...)
-		model.InputModalities = append([]string(nil), model.InputModalities...)
-		models[i] = model
-	}
-	return models
 }
 
 func chatGPTUpstreamModel(modelID string) string {

@@ -139,7 +139,15 @@ func main() {
 	if proxyURL == "" {
 		proxyURL = os.Getenv("https_proxy")
 	}
-	setupChatGPTProvider(nativeProviders, proxyURL, cfg.ChatGPTAuthFile, logger)
+	chatgptProvider := setupChatGPTProvider(nativeProviders, proxyURL, cfg.ChatGPTAuthFile, logger)
+	if chatgptProvider != nil {
+		applyChatGPTCatalog(nativeProviders, provider.ChatGPTModelCatalog(), logger)
+		safego.Go(logger, "chatgpt catalog", func() {
+			if models, err := chatgptProvider.RefreshModelCatalog(context.Background()); err == nil {
+				applyChatGPTCatalog(nativeProviders, models, logger)
+			}
+		})
+	}
 	if cfg.CopilotToken != "" {
 		setupCopilotProviders(nativeProviders, cfg, logger)
 	}
@@ -332,6 +340,23 @@ func main() {
 		admin.PUT("/routes/:model", adminHandler.HandleUpdateRoute)
 		admin.GET("/logs", adminHandler.HandleLogs)
 		admin.GET("/health", adminHandler.HandleHealth)
+		admin.POST("/providers/chatgpt/models/refresh", func(c *gin.Context) {
+			if chatgptProvider == nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "ChatGPT 渠道未启用"})
+				return
+			}
+			models, err := chatgptProvider.RefreshModelCatalog(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "模型目录刷新失败，请检查登录状态和网络后重试"})
+				return
+			}
+			applyChatGPTCatalog(nativeProviders, models, logger)
+			ids := make([]string, 0, len(models))
+			for _, model := range models {
+				ids = append(ids, model.ID)
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "complete", "count": len(ids), "models": ids})
+		})
 		admin.GET("/update/check", updateAdminHandler.HandleUpdateCheck)
 		admin.POST("/update/apply", updateAdminHandler.HandleUpdateApply)
 		admin.GET("/update/status", updateAdminHandler.HandleUpdateStatus)
@@ -1287,11 +1312,11 @@ func setupCopilotProviders(router *provider.Router, cfg *config.Config, logger *
 }
 
 // setupChatGPTProvider 设置 ChatGPT Codex 提供商（使用 ChatGPT Plus/Pro OAuth token）。
-func setupChatGPTProvider(router *provider.Router, proxyURL, authPath string, logger *log.Logger) {
+func setupChatGPTProvider(router *provider.Router, proxyURL, authPath string, logger *log.Logger) *provider.ChatGPTProvider {
 	chatgptProvider := provider.NewChatGPTProviderWithAuthPath(proxyURL, authPath)
 	if !chatgptProvider.IsHealthy(context.Background()) {
 		logger.Printf("ChatGPT Codex provider disabled: no usable OAuth credential (run codex login or Pi /login openai-codex)")
-		return
+		return nil
 	}
 	router.RegisterProvider("chatgpt", chatgptProvider)
 
@@ -1313,6 +1338,28 @@ func setupChatGPTProvider(router *provider.Router, proxyURL, authPath string, lo
 		connection = "proxy"
 	}
 	logger.Printf("ChatGPT Codex provider enabled (auth: %s, connection: %s)", chatgptProvider.AuthPath(), connection)
+	return chatgptProvider
+}
+
+// applyChatGPTCatalog 把模型目录落到路由：注册/覆盖 chain 与模型元数据，
+// 并下线上游已不再提供的旧模型。
+func applyChatGPTCatalog(router *provider.Router, models []provider.ChatGPTModel, logger *log.Logger) {
+	keep := make(map[string]bool, len(models))
+	for _, model := range models {
+		keep[model.ID] = true
+		router.RegisterChain(model.ID, []string{"chatgpt"})
+		router.RegisterModel(provider.ModelInfo{
+			ID:              model.ID,
+			Provider:        "chatgpt",
+			Protocol:        "responses",
+			Capabilities:    model.Capabilities,
+			InputModalities: model.InputModalities,
+			MaxInputTokens:  model.MaxInputTokens,
+			MaxOutputTokens: model.MaxOutputTokens,
+		})
+	}
+	router.UnregisterModelsExcept("chatgpt", keep)
+	logger.Printf("ChatGPT model catalog applied: %d models", len(models))
 }
 
 func hasProvider(names []string, wanted string) bool {
