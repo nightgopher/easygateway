@@ -193,6 +193,20 @@ func (r *Router) RegisterModel(info ModelInfo) {
 	r.models[info.ID] = info
 }
 
+// UnregisterModelsExcept drops models (and their chains) that belong to the
+// given provider but are no longer part of keep. Dynamic catalogs use it to
+// retire models the upstream no longer offers.
+func (r *Router) UnregisterModelsExcept(providerName string, keep map[string]bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, info := range r.models {
+		if info.Provider == providerName && !keep[id] {
+			delete(r.models, id)
+			delete(r.chains, id)
+		}
+	}
+}
+
 // Route 返回模型对应的提供商链
 func (r *Router) Route(modelName string) ([]Provider, error) {
 	r.mu.RLock()
